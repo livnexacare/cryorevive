@@ -6,4 +6,5 @@ pydantic[email]==2.8.2
 bcrypt==4.2.0
 boto3==1.35.0
 resend==2.4.0
+razorpay==1.4.2
 python-multipart==0.0.9
