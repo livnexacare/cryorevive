@@ -1,8 +1,8 @@
 import { Navigation } from "@/components/Navigation";
 import { SEO } from "@/components/SEO";
-import { Card, CardContent } from "@/components/ui/card";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Snowflake, Droplets, Repeat, Truck, Clock, Thermometer, Activity, CheckCircle } from "lucide-react";
+import { Snowflake, Droplets, Repeat, Truck, Clock, Thermometer, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function Services() {
@@ -116,10 +116,12 @@ export default function Services() {
               return (
                 <div key={index} className={`grid lg:grid-cols-2 gap-12 items-center ${index !== services.length - 1 ? 'mb-20' : ''}`}>
                   <div className={`relative h-[400px] rounded-sm overflow-hidden border ${service.color === 'text-primary' ? 'border-primary/30' : 'border-accent/30'} ${isEven ? 'order-1' : 'order-2 lg:order-2'}`}>
-                    <img 
-                      src={service.image} 
+                    <Image
+                      src={service.image}
                       alt={service.title}
-                      className="absolute inset-0 w-full h-full object-cover"
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 1024px) 100vw, 50vw"
                     />
                     <div className={`absolute inset-0 ${service.color === 'text-primary' ? 'bg-primary/20' : 'bg-accent/20'}`}></div>
                   </div>

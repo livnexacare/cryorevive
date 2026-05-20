@@ -1,5 +1,6 @@
 import { Navigation } from "@/components/Navigation";
 import { SEO } from "@/components/SEO";
+import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -122,10 +123,12 @@ export default function Testimonials() {
               {testimonials.map((testimonial, index) => (
                 <Card key={index} className="bg-background border-border overflow-hidden">
                   <div className="relative h-48 bg-muted">
-                    <img 
-                      src={testimonial.image} 
+                    <Image
+                      src={testimonial.image}
                       alt={`${testimonial.name} recovery session`}
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, 50vw"
                     />
                     <div className="absolute top-4 right-4">
                       <Badge className="bg-primary text-primary-foreground font-semibold">

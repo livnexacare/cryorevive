@@ -1,5 +1,6 @@
 import { Navigation } from "@/components/Navigation";
 import { SEO } from "@/components/SEO";
+import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, ArrowRight } from "lucide-react";
@@ -126,10 +127,12 @@ export default function Blog() {
                   className="bg-card border-border overflow-hidden group hover:border-primary/50 transition-all duration-300"
                 >
                   <div className="relative h-48 bg-muted overflow-hidden">
-                    <img
+                    <Image
                       src={article.image}
                       alt={article.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                     />
                     <div className="absolute top-4 left-4">
                       <Badge className="bg-primary/90 text-primary-foreground font-semibold">

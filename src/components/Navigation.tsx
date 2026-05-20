@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
@@ -20,9 +21,11 @@ export function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link href="/" className="flex items-center gap-3">
-            <img 
-              src="/ChatGPT_Image_May_16_2025_05_08_10_PM.png" 
-              alt="CryoRevive Logo" 
+            <Image
+              src="/ChatGPT_Image_May_16_2025_05_08_10_PM.png"
+              alt="CryoRevive Logo"
+              width={120}
+              height={40}
               className="h-10 w-auto"
             />
             <span className="text-xl font-display font-bold">CryoRevive</span>

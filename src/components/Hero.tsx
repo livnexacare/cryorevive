@@ -1,6 +1,7 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Thermometer, Timer, TrendingUp } from "lucide-react";
+import { ArrowRight, Thermometer, TrendingUp } from "lucide-react";
 
 export function Hero() {
   return (
@@ -81,18 +82,22 @@ export function Hero() {
           <div className="relative lg:h-[600px] h-[400px] rounded-sm overflow-hidden border border-primary/30">
             <div className="absolute inset-0 grid grid-cols-2">
               <div className="relative">
-                <img 
-                  src="/Ice-Baths-Sydney-1.jpg" 
+                <Image
+                  src="/Ice-Baths-Sydney-1.jpg"
                   alt="Ice Bath Therapy Chamber"
-                  className="absolute inset-0 w-full h-full object-cover"
+                  fill
+                  className="object-cover"
+                  sizes="50vw"
                 />
                 <div className="absolute inset-0 bg-primary/20"></div>
               </div>
               <div className="relative">
-                <img 
-                  src="/hgmag-architecture_sauna-in-bathroom_4x3.jpg" 
+                <Image
+                  src="/hgmag-architecture_sauna-in-bathroom_4x3.jpg"
                   alt="Steam Sauna Interior"
-                  className="absolute inset-0 w-full h-full object-cover"
+                  fill
+                  className="object-cover"
+                  sizes="50vw"
                 />
                 <div className="absolute inset-0 bg-accent/20"></div>
               </div>
