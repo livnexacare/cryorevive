@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@700&family=Rubik:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 30% 8%;
+    --foreground: 210 20% 98%;
+    --card: 220 28% 12%;
+    --card-foreground: 210 20% 98%;
+    --popover: 220 28% 12%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 194 66% 51%;
+    --primary-foreground: 220 30% 8%;
+    --secondary: 220 25% 15%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 220 25% 15%;
+    --muted-foreground: 210 15% 60%;
+    --accent: 13 100% 61%;
+    --accent-foreground: 220 30% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 20% 20%;
+    --input: 220 20% 20%;
+    --ring: 194 66% 51%;
+    --radius: 0.25rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
