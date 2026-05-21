@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
+import { API_URL, parseTimeSlot } from "@/lib/api";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -114,7 +115,33 @@ export default function Contact() {
             const verifyData = await verifyResponse.json();
 
             if (verifyData.success) {
-              // Step 4: Save booking after successful verification
+              // Step 4a: Persist booking to backend
+              try {
+                await fetch(`${API_URL}/api/bookings`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    name: bookingData.organizerName,
+                    email: bookingData.organizerEmail,
+                    phone: bookingData.organizerPhone,
+                    service_type: "mobile_unit",
+                    date: bookingData.eventDate,
+                    time_slot: parseTimeSlot(bookingData.eventTime),
+                    notes: [
+                      bookingData.eventName,
+                      bookingData.eventType,
+                      bookingData.location,
+                      `${bookingData.athleteCount} athletes`,
+                      `Order: ${response.razorpay_order_id}`,
+                      bookingData.specialRequirements,
+                    ].filter(Boolean).join(" | "),
+                  }),
+                });
+              } catch (_) {
+                // Non-fatal — payment confirmed, booking will be followed up manually
+              }
+
+              // Step 4b: Also cache locally for account page
               const allBookings = JSON.parse(localStorage.getItem("bookings") || "[]");
               allBookings.push({
                 ...bookingData,

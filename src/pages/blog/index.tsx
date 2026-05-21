@@ -1,80 +1,122 @@
 import Image from "next/image";
+import { GetServerSideProps } from "next";
 import { Navigation } from "@/components/Navigation";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { API_URL } from "@/lib/api";
 
-export default function Blog() {
-  const articles = [
-    {
-      slug: "ice-bath-benefits-athletes",
-      title: "The Science Behind Ice Baths: Why Elite Athletes Swear By Cold Therapy",
-      excerpt: "Discover the physiological mechanisms that make ice bath therapy a game-changer for muscle recovery, inflammation reduction, and athletic performance enhancement.",
-      image: "/Ice-Baths-Sydney-1.jpg",
-      category: "Recovery Science",
-      readTime: "8 min read",
-      date: "2026-05-01",
-      author: "Dr. Sarah Martinez"
-    },
-    {
-      slug: "contrast-therapy-protocol",
-      title: "Contrast Therapy Protocol: Maximizing Recovery with Hot-Cold Cycles",
-      excerpt: "Learn the optimal temperature ranges, timing, and protocols for contrast therapy that professional athletes use to accelerate recovery and reduce soreness.",
-      image: "/can-you-take-a-hot-shower-after-a-cold-plunge-510868.webp",
-      category: "Training Tips",
-      readTime: "6 min read",
-      date: "2026-04-28",
-      author: "Coach Marcus Chen"
-    },
-    {
-      slug: "sauna-benefits-muscle-recovery",
-      title: "Heat Therapy Benefits: How Saunas Improve Muscle Recovery",
-      excerpt: "Explore the research on sauna therapy for muscle relaxation, detoxification, cardiovascular health, and its synergy with cold plunge protocols.",
-      image: "/infrared_sauna_vs_traditional_sauna-1024x768.webp",
-      category: "Recovery Science",
-      readTime: "7 min read",
-      date: "2026-04-25",
-      author: "Dr. Priya Sharma"
-    },
-    {
-      slug: "cold-plunge-mental-health",
-      title: "Cold Plunge for Mental Health: Beyond Physical Recovery",
-      excerpt: "Research shows ice baths offer powerful mental health benefits including stress reduction, improved mood, and enhanced mental resilience.",
-      image: "/Cold-Plunge-for-Mental-Health_img.jpg",
-      category: "Wellness",
-      readTime: "5 min read",
-      date: "2026-04-22",
-      author: "Dr. Emma Wilson"
-    },
-    {
-      slug: "athlete-recovery-timing",
-      title: "When to Use Ice Baths: Optimal Timing for Maximum Recovery",
-      excerpt: "Timing matters. Learn when to schedule your cold plunge sessions relative to training for the best results in inflammation control and recovery.",
-      image: "/CoreChill-Lifestyle.webp",
-      category: "Training Tips",
-      readTime: "6 min read",
-      date: "2026-04-18",
-      author: "Coach David Thompson"
-    },
-    {
-      slug: "contrast-therapy-vs-ice-bath",
-      title: "Contrast Therapy vs Ice Bath: Which Recovery Method is Right for You?",
-      excerpt: "Compare the benefits of pure cold immersion versus alternating hot-cold cycles to determine the best recovery protocol for your training goals.",
-      image: "/image1-3.webp",
-      category: "Recovery Science",
-      readTime: "7 min read",
-      date: "2026-04-15",
-      author: "Dr. Sarah Martinez"
+const FALLBACK_ARTICLES = [
+  {
+    slug: "ice-bath-benefits-athletes",
+    title: "The Science Behind Ice Baths: Why Elite Athletes Swear By Cold Therapy",
+    excerpt: "Discover the physiological mechanisms that make ice bath therapy a game-changer for muscle recovery, inflammation reduction, and athletic performance enhancement.",
+    image: "/Ice-Baths-Sydney-1.jpg",
+    category: "Recovery Science",
+    readTime: "8 min read",
+    date: "2026-05-01",
+    author: "Dr. Sarah Martinez",
+  },
+  {
+    slug: "contrast-therapy-protocol",
+    title: "Contrast Therapy Protocol: Maximizing Recovery with Hot-Cold Cycles",
+    excerpt: "Learn the optimal temperature ranges, timing, and protocols for contrast therapy that professional athletes use to accelerate recovery and reduce soreness.",
+    image: "/can-you-take-a-hot-shower-after-a-cold-plunge-510868.webp",
+    category: "Training Tips",
+    readTime: "6 min read",
+    date: "2026-04-28",
+    author: "Coach Marcus Chen",
+  },
+  {
+    slug: "sauna-benefits-muscle-recovery",
+    title: "Heat Therapy Benefits: How Saunas Improve Muscle Recovery",
+    excerpt: "Explore the research on sauna therapy for muscle relaxation, detoxification, cardiovascular health, and its synergy with cold plunge protocols.",
+    image: "/infrared_sauna_vs_traditional_sauna-1024x768.webp",
+    category: "Recovery Science",
+    readTime: "7 min read",
+    date: "2026-04-25",
+    author: "Dr. Priya Sharma",
+  },
+  {
+    slug: "cold-plunge-mental-health",
+    title: "Cold Plunge for Mental Health: Beyond Physical Recovery",
+    excerpt: "Research shows ice baths offer powerful mental health benefits including stress reduction, improved mood, and enhanced mental resilience.",
+    image: "/Cold-Plunge-for-Mental-Health_img.jpg",
+    category: "Wellness",
+    readTime: "5 min read",
+    date: "2026-04-22",
+    author: "Dr. Emma Wilson",
+  },
+  {
+    slug: "athlete-recovery-timing",
+    title: "When to Use Ice Baths: Optimal Timing for Maximum Recovery",
+    excerpt: "Timing matters. Learn when to schedule your cold plunge sessions relative to training for the best results in inflammation control and recovery.",
+    image: "/CoreChill-Lifestyle.webp",
+    category: "Training Tips",
+    readTime: "6 min read",
+    date: "2026-04-18",
+    author: "Coach David Thompson",
+  },
+  {
+    slug: "contrast-therapy-vs-ice-bath",
+    title: "Contrast Therapy vs Ice Bath: Which Recovery Method is Right for You?",
+    excerpt: "Compare the benefits of pure cold immersion versus alternating hot-cold cycles to determine the best recovery protocol for your training goals.",
+    image: "/image1-3.webp",
+    category: "Recovery Science",
+    readTime: "7 min read",
+    date: "2026-04-15",
+    author: "Dr. Sarah Martinez",
+  },
+];
+
+interface Article {
+  slug: string;
+  title: string;
+  excerpt: string;
+  image: string;
+  category: string;
+  readTime: string;
+  date: string;
+  author: string;
+}
+
+interface Props {
+  articles: Article[];
+}
+
+export const getServerSideProps: GetServerSideProps<Props> = async () => {
+  try {
+    const res = await fetch(`${API_URL}/api/blog`, { next: { revalidate: 60 } } as RequestInit);
+    if (res.ok) {
+      const posts = await res.json();
+      if (Array.isArray(posts) && posts.length > 0) {
+        const articles: Article[] = posts.map((p: any) => ({
+          slug: p.slug,
+          title: p.title,
+          excerpt: p.excerpt || "",
+          image: p.cover_image_url || "/Ice-Baths-Sydney-1.jpg",
+          category: "Recovery Science",
+          readTime: "5 min read",
+          date: (p.created_at || "").split("T")[0],
+          author: "CryoRevive Team",
+        }));
+        return { props: { articles } };
+      }
     }
-  ];
+  } catch {
+    // fall through to hardcoded
+  }
+  return { props: { articles: FALLBACK_ARTICLES } };
+};
 
-  const categories = ["All", "Recovery Science", "Training Tips", "Wellness"];
+const categories = ["All", "Recovery Science", "Training Tips", "Wellness"];
 
+export default function Blog({ articles }: Props) {
   return (
     <>
-      <SEO 
+      <SEO
         title="Recovery Science Blog | CryoRevive - Ice Bath & Sauna Research"
         description="Learn about ice bath benefits, sauna therapy, contrast therapy protocols, and the latest recovery science for athletes and fitness enthusiasts."
       />
@@ -145,7 +187,13 @@ export default function Blog() {
                     <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                       <div className="flex items-center space-x-1">
                         <Calendar className="h-3 w-3" />
-                        <span>{new Date(article.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                        <span>
+                          {new Date(article.date).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <Clock className="h-3 w-3" />
