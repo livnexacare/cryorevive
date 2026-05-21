@@ -2,9 +2,10 @@ from dotenv import load_dotenv
 from pathlib import Path
 load_dotenv(Path(__file__).parent / ".env")
 
+import os
 import logging
 from fastapi import FastAPI
-from starlette.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_pool, close_pool
 from routers import bookings, contact, blog, payments, uploads
@@ -16,15 +17,12 @@ logging.basicConfig(
 
 app = FastAPI(title="CryoRevive API", version="1.0.0")
 
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://cryo-revive-main.vercel.app",
-        "https://cryorevive.com",
-        "https://www.cryorevive.com",
-        "http://localhost:3000",
-    ],
-    allow_origin_regex=r"https://.*livnexacares-projects\.vercel\.app",
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,8 +42,7 @@ async def health():
 
 @app.on_event("startup")
 async def startup():
-    await get_pool()
-    logging.getLogger(__name__).info("DB pool ready")
+    logging.getLogger(__name__).info("CryoRevive API starting")
 
 
 @app.on_event("shutdown")

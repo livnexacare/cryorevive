@@ -3,7 +3,7 @@ import ssl
 import asyncpg
 from typing import Optional
 
-DATABASE_URL = os.environ["DATABASE_URL"]
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 _pool: asyncpg.Pool = None
 
