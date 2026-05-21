@@ -1,6 +1,7 @@
-import { Navigation } from "@/components/Navigation";
-import { SEO } from "@/components/SEO";
 import Image from "next/image";
+import { Navigation } from "@/components/Navigation";
+import { Footer } from "@/components/Footer";
+import { SEO } from "@/components/SEO";
 import { Button } from "@/components/ui/button";
 import { Snowflake, Droplets, Repeat, Truck, Clock, Thermometer, CheckCircle } from "lucide-react";
 import Link from "next/link";
@@ -120,8 +121,8 @@ export default function Services() {
                       src={service.image}
                       alt={service.title}
                       fill
-                      className="object-cover"
                       sizes="(max-width: 1024px) 100vw, 50vw"
+                      className="object-cover"
                     />
                     <div className={`absolute inset-0 ${service.color === 'text-primary' ? 'bg-primary/20' : 'bg-accent/20'}`}></div>
                   </div>
@@ -215,6 +216,7 @@ export default function Services() {
           </div>
         </section>
       </main>
+      <Footer />
     </>
   );
 }

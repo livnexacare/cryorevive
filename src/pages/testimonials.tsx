@@ -1,6 +1,6 @@
+import Image from "next/image";
 import { Navigation } from "@/components/Navigation";
 import { SEO } from "@/components/SEO";
-import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -127,8 +127,8 @@ export default function Testimonials() {
                       src={testimonial.image}
                       alt={`${testimonial.name} recovery session`}
                       fill
-                      className="object-cover"
                       sizes="(max-width: 768px) 100vw, 50vw"
+                      className="object-cover"
                     />
                     <div className="absolute top-4 right-4">
                       <Badge className="bg-primary text-primary-foreground font-semibold">

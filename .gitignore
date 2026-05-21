@@ -38,8 +38,10 @@ next-env.d.ts
 # firebase
 firebase-service-account.json
 
-.vercel
 backend/__pycache__/
 backend/models/__pycache__/
 backend/routers/__pycache__/
 backend/utils/__pycache__/
+
+# uploads (user-uploaded binaries should not be in git)
+uploads/

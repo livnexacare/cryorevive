@@ -86,8 +86,8 @@ export function Hero() {
                   src="/Ice-Baths-Sydney-1.jpg"
                   alt="Ice Bath Therapy Chamber"
                   fill
+                  sizes="25vw"
                   className="object-cover"
-                  sizes="50vw"
                 />
                 <div className="absolute inset-0 bg-primary/20"></div>
               </div>
@@ -96,8 +96,8 @@ export function Hero() {
                   src="/hgmag-architecture_sauna-in-bathroom_4x3.jpg"
                   alt="Steam Sauna Interior"
                   fill
+                  sizes="25vw"
                   className="object-cover"
-                  sizes="50vw"
                 />
                 <div className="absolute inset-0 bg-accent/20"></div>
               </div>

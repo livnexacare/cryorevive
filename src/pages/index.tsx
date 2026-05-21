@@ -1,4 +1,5 @@
 import { Navigation } from "@/components/Navigation";
+import { Footer } from "@/components/Footer";
 import { Hero } from "@/components/Hero";
 import { Benefits } from "@/components/Benefits";
 import { ServicesOverview } from "@/components/ServicesOverview";
@@ -19,6 +20,7 @@ export default function Home() {
         <ServicesOverview />
         <TestimonialsPreview />
       </main>
+      <Footer />
     </>
   );
 }

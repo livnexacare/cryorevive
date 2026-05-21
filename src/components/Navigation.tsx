@@ -1,11 +1,24 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Menu, X } from "lucide-react";
-import { useState } from "react";
+import { Menu, X, User } from "lucide-react";
+import { useState, useEffect } from "react";
 
 export function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const user = localStorage.getItem("current_user");
+      setIsLoggedIn(!!user);
+    };
+    
+    checkAuth();
+    window.addEventListener("storage", checkAuth);
+    
+    return () => window.removeEventListener("storage", checkAuth);
+  }, []);
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -23,12 +36,15 @@ export function Navigation() {
           <Link href="/" className="flex items-center gap-3">
             <Image
               src="/ChatGPT_Image_May_16_2025_05_08_10_PM.png"
-              alt="CryoRevive Logo"
+              alt="CryoRevive by Livnexa Logo"
               width={120}
               height={40}
               className="h-10 w-auto"
             />
-            <span className="text-xl font-display font-bold">CryoRevive</span>
+            <div className="flex flex-col">
+              <span className="text-xl font-display font-bold leading-tight">CryoRevive</span>
+              <span className="text-xs italic font-normal text-muted-foreground">by Livnexa</span>
+            </div>
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">
@@ -41,6 +57,20 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
+            {isLoggedIn ? (
+              <Link href="/account">
+                <Button variant="outline" size="sm">
+                  <User className="w-4 h-4 mr-2" />
+                  My Account
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/login">
+                <Button variant="outline" size="sm">
+                  Login
+                </Button>
+              </Link>
+            )}
             <Link href="/booking">
               <Button variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
                 Book Now
@@ -74,6 +104,20 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
+            {isLoggedIn ? (
+              <Link href="/account" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="outline" className="w-full">
+                  <User className="w-4 h-4 mr-2" />
+                  My Account
+                </Button>
+              </Link>
+            ) : (
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="outline" className="w-full">
+                  Login
+                </Button>
+              </Link>
+            )}
             <Link href="/booking" onClick={() => setMobileMenuOpen(false)}>
               <Button variant="default" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
                 Book Now

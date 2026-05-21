@@ -1,6 +1,6 @@
+import Image from "next/image";
 import { Navigation } from "@/components/Navigation";
 import { SEO } from "@/components/SEO";
-import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,8 +80,8 @@ export default function BlogPost() {
                   src={article.image}
                   alt={article.title}
                   fill
+                  sizes="(max-width: 1024px) 100vw, 66vw"
                   className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 896px"
                 />
               </div>
 
@@ -204,7 +204,7 @@ export default function BlogPost() {
               ].map((related, index) => (
                 <Card key={index} className="bg-background border-border group hover:border-primary/50 transition-all">
                   <div className="relative h-40 bg-muted overflow-hidden">
-                    <Image src={related.image} alt={related.title} fill className="object-cover group-hover:scale-105 transition-transform duration-500" sizes="(max-width: 768px) 100vw, 33vw" />
+                    <Image src={related.image} alt={related.title} fill sizes="33vw" className="object-cover group-hover:scale-105 transition-transform duration-500" />
                     <div className="absolute top-3 left-3">
                       <Badge className="bg-primary/90 text-primary-foreground text-xs">
                         {related.category}

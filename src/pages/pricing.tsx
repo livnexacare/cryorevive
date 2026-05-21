@@ -1,4 +1,5 @@
 import { Navigation } from "@/components/Navigation";
+import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -342,6 +343,7 @@ export default function Pricing() {
           </div>
         </section>
       </main>
+      <Footer />
     </>
   );
 }
