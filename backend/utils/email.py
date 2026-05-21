@@ -43,7 +43,7 @@ def _booking_confirmation_html(b: dict) -> str:
     return f"""
     <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;">
       <div style="background:#0ea5e9;padding:24px;color:#fff;">
-        <h1 style="margin:0;font-size:22px;font-weight:700;">Booking received · {b['booking_id']}</h1>
+        <h1 style="margin:0;font-size:22px;font-weight:700;">Booking received · {b['id']}</h1>
         <p style="margin:6px 0 0;font-size:12px;opacity:.9;letter-spacing:.15em;text-transform:uppercase;">CryoRevive · Elite Recovery</p>
       </div>
       <div style="padding:24px;background:#fff;">
@@ -70,7 +70,7 @@ def _booking_admin_html(b: dict) -> str:
     return f"""
     <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;">
       <div style="background:#111827;padding:20px;color:#fff;">
-        <h2 style="margin:0;font-size:18px;">🔔 New booking · {b['booking_id']}</h2>
+        <h2 style="margin:0;font-size:18px;">🔔 New booking · {b['id']}</h2>
       </div>
       <div style="padding:20px;background:#fff;">
         <p style="margin:0 0 4px;font-size:15px;font-weight:600;">{b['name']}</p>
@@ -86,7 +86,7 @@ def _booking_confirmed_html(b: dict) -> str:
     return f"""
     <div style="font-family:'Helvetica Neue',Arial,sans-serif;color:#111827;max-width:620px;margin:0 auto;">
       <div style="background:#16a34a;padding:24px;color:#fff;">
-        <h1 style="margin:0;font-size:22px;font-weight:700;">✓ Booking confirmed · {b['booking_id']}</h1>
+        <h1 style="margin:0;font-size:22px;font-weight:700;">✓ Booking confirmed · {b['id']}</h1>
         <p style="margin:6px 0 0;font-size:12px;opacity:.9;letter-spacing:.15em;text-transform:uppercase;">CryoRevive · Elite Recovery</p>
       </div>
       <div style="padding:24px;background:#fff;">
@@ -110,7 +110,7 @@ async def send_booking_received(booking: dict) -> None:
         await send_async({
             "from": f"CryoRevive <{SENDER}>",
             "to": _to(ADMIN_EMAIL),
-            "subject": f"[CryoRevive] New booking {booking['booking_id']} · {booking['name']}",
+            "subject": f"[CryoRevive] New booking {booking['id']} · {booking['name']}",
             "html": _booking_admin_html(booking),
             "reply_to": [customer_email],
         })
@@ -118,7 +118,7 @@ async def send_booking_received(booking: dict) -> None:
         await send_async({
             "from": f"CryoRevive <{SENDER}>",
             "to": _to(customer_email),
-            "subject": f"Booking received · {booking['booking_id']} · CryoRevive",
+            "subject": f"Booking received · {booking['id']} · CryoRevive",
             "html": _booking_confirmation_html(booking),
         })
     except Exception as e:
@@ -133,7 +133,7 @@ async def send_booking_confirmed(booking: dict) -> None:
         await send_async({
             "from": f"CryoRevive <{SENDER}>",
             "to": _to(customer_email),
-            "subject": f"✓ Payment confirmed · {booking['booking_id']} · CryoRevive",
+            "subject": f"✓ Payment confirmed · {booking['id']} · CryoRevive",
             "html": _booking_confirmed_html(booking),
         })
     except Exception as e:
