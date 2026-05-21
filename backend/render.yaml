@@ -22,6 +22,8 @@ services:
         sync: false
       - key: FRONTEND_URL
         value: https://cryo-revive-main.vercel.app
+      - key: ALLOWED_ORIGINS
+        value: https://cryo-revive-main.vercel.app
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID
