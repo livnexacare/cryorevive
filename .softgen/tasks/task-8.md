@@ -1,6 +1,6 @@
 ---
 title: Admin Panel for Event Bookings
-status: in_progress
+status: done
 priority: high
 type: feature
 tags: [admin, bookings, management]
@@ -18,7 +18,7 @@ Admin panel to view and manage incoming event bookings. Includes authentication,
 - [x] Add booking status management (pending, confirmed, completed, cancelled)
 - [x] Add filter/search functionality
 - [x] Add booking statistics
-- [ ] Run check_for_errors
+- [x] Run check_for_errors
 
 ## Acceptance
 - Admin can log in at /admin
