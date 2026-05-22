@@ -20,7 +20,7 @@ export default function AdminLogin() {
       body: JSON.stringify(credentials),
     });
     if (res.ok) {
-      sessionStorage.setItem("admin_authenticated", "true");
+      sessionStorage.setItem("cryo_admin", "true");
       router.push("/admin/dashboard");
     } else {
       setError("Invalid credentials");

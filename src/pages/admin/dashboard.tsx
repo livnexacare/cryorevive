@@ -50,7 +50,7 @@ export default function AdminDashboard() {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const auth = sessionStorage.getItem("admin_authenticated");
+    const auth = sessionStorage.getItem("cryo_admin");
     if (auth !== "true") {
       router.push("/admin");
       return;
@@ -100,7 +100,7 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem("admin_authenticated");
+    sessionStorage.removeItem("cryo_admin");
     router.push("/admin");
   };
 
