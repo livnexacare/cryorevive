@@ -14,3 +14,7 @@ class BookingIn(BaseModel):
 
 class BookingStatusIn(BaseModel):
     status: Literal["pending", "confirmed", "cancelled", "completed"]
+
+
+class BookingStatusUpdate(BaseModel):
+    status: Literal["pending", "confirmed", "cancelled"]

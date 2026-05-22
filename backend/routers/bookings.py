@@ -1,15 +1,24 @@
+import os
 import uuid
 import asyncio
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from database import db_execute, db_fetchrow, db_fetch, row_to_dict, rows_to_list
-from models.booking import BookingIn
-from utils.email import send_booking_received
+from models.booking import BookingIn, BookingStatusUpdate
+from utils.email import send_booking_received, send_booking_confirmed
 from utils.slots import get_available_slots
 
 router = APIRouter(prefix="/api", tags=["bookings"])
+
+ADMIN_KEY = os.environ.get("ADMIN_API_KEY", "")
+
+
+def _require_admin(x_admin_key: str) -> None:
+    if not ADMIN_KEY or x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 @router.post("/bookings", status_code=201)
@@ -71,3 +80,67 @@ async def get_slots(
         "available_slots": available,
         "booked_slots": booked,
     }
+
+
+@router.get("/bookings")
+async def list_bookings(
+    status: Optional[str] = Query(None),
+    date: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    x_admin_key: str = Header(default=""),
+):
+    _require_admin(x_admin_key)
+
+    conditions: list[str] = []
+    params: list = []
+
+    if status:
+        params.append(status)
+        conditions.append(f"status = ${len(params)}")
+    if date:
+        params.append(date)
+        conditions.append(f"date = ${len(params)}::date")
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    params.append(limit)
+    limit_ph = f"${len(params)}"
+
+    rows = await db_fetch(
+        f"SELECT * FROM bookings {where} ORDER BY created_at DESC LIMIT {limit_ph}",
+        *params,
+    )
+    return rows_to_list(rows)
+
+
+@router.get("/bookings/{booking_id}")
+async def get_booking(booking_id: str, x_admin_key: str = Header(default="")):
+    _require_admin(x_admin_key)
+    row = await db_fetchrow("SELECT * FROM bookings WHERE id = $1", booking_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return row_to_dict(row)
+
+
+@router.patch("/bookings/{booking_id}/status")
+async def update_booking_status(
+    booking_id: str,
+    payload: BookingStatusUpdate,
+    x_admin_key: str = Header(default=""),
+):
+    _require_admin(x_admin_key)
+
+    existing = await db_fetchrow("SELECT * FROM bookings WHERE id = $1", booking_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    await db_execute(
+        "UPDATE bookings SET status = $1 WHERE id = $2",
+        payload.status, booking_id,
+    )
+
+    updated = row_to_dict(await db_fetchrow("SELECT * FROM bookings WHERE id = $1", booking_id))
+
+    if payload.status == "confirmed" and existing["payment_status"] == "unpaid":
+        asyncio.create_task(send_booking_confirmed(updated))
+
+    return updated
