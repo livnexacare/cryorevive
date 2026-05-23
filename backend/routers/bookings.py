@@ -1,7 +1,7 @@
 import os
 import uuid
 import asyncio
-from datetime import datetime, timezone
+from datetime import date as Date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -59,7 +59,7 @@ async def create_booking(payload: BookingIn):
 
 @router.get("/slots")
 async def get_slots(
-    date: str = Query(..., description="YYYY-MM-DD"),
+    date: Date = Query(..., description="YYYY-MM-DD"),
     service_type: str = Query(..., description="ice_bath | steam_sauna | contrast_therapy | mobile_unit"),
 ):
     try:
