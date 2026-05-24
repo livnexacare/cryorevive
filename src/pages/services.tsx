@@ -60,7 +60,7 @@ export default function Services() {
         "Accelerates metabolic waste removal",
         "Elite-level recovery optimization"
       ],
-      image: "/image1-3.webp"
+      image: "/Contrast%20Therapy.png"
     },
     {
       icon: Truck,
@@ -78,7 +78,7 @@ export default function Services() {
         "Custom session scheduling",
         "Complete safety and monitoring"
       ],
-      image: "/CoreChill-Lifestyle.webp"
+      image: "/Mobile%20recovery%20unit.png"
     }
   ];
 
