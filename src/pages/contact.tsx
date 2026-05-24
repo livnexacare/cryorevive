@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Phone, Mail, MapPin, MessageCircle, Clock, Users, CheckCircle } from "lucide-react";
+import { Phone, Mail, MapPin, MessageCircle, Clock, Users, CheckCircle, Truck } from "lucide-react";
 import Link from "next/link";
 
 const WA_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "919891430920";
@@ -234,6 +234,27 @@ export default function Contact() {
                       <div>
                         <p className="text-sm font-semibold">Scalable Service</p>
                         <p className="text-xs text-muted-foreground">From 10 to 500+ athletes</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-accent/5 border-accent/20">
+                  <CardContent className="p-6">
+                    <div className="flex items-start space-x-4">
+                      <div className="bg-accent/10 w-12 h-12 rounded-sm flex items-center justify-center flex-shrink-0">
+                        <Truck className="h-6 w-6 text-accent" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-display font-bold mb-1">Planning an event?</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Book our Mobile Recovery Unit for your marathon, sports day, or team training camp.
+                        </p>
+                        <Link href="/book-event">
+                          <button className="inline-flex items-center justify-center px-5 py-2.5 bg-accent hover:bg-accent/90 text-background text-sm font-semibold rounded-sm transition-colors">
+                            Book Mobile Event
+                          </button>
+                        </Link>
                       </div>
                     </div>
                   </CardContent>

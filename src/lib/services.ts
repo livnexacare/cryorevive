@@ -36,6 +36,15 @@ export const SERVICES: Service[] = [
     description: 'Alternating hot and cold therapy for maximum recovery',
     serviceType: 'contrast_therapy',
   },
+  {
+    id: 'cryo_chamber',
+    name: 'Cryo Chamber',
+    duration: '3 min',
+    price: 1200,
+    priceDisplay: '₹1,200',
+    description: 'Whole-body cryotherapy in sub-zero chamber for rapid recovery',
+    serviceType: 'cryo_chamber',
+  },
 ]
 
 export const getService = (serviceType: string): Service | undefined =>

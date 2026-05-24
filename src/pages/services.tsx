@@ -191,12 +191,12 @@ export default function Services() {
                         Book {service.title}
                       </Button>
                     ) : (
-                      <Link href="/contact">
+                      <Link href="/book-event">
                         <Button
                           size="lg"
                           className="bg-accent hover:bg-accent/90 text-background font-semibold mt-6"
                         >
-                          Request Mobile Service
+                          Book Mobile Event
                         </Button>
                       </Link>
                     )}

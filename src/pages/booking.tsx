@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
-import { Snowflake, Flame, Activity, CheckCircle, ChevronLeft, MapPin } from "lucide-react";
+import { Snowflake, Flame, Activity, Zap, CheckCircle, ChevronLeft, MapPin } from "lucide-react";
 import { SERVICES } from "@/lib/services";
 import type { Service } from "@/lib/services";
 
@@ -20,6 +20,7 @@ const SERVICE_ICONS: Record<string, typeof Snowflake> = {
   ice_bath: Snowflake,
   steam_sauna: Flame,
   contrast_therapy: Activity,
+  cryo_chamber: Zap,
 };
 
 const TIME_SLOTS = [
@@ -190,7 +191,7 @@ Please confirm my booking. Thank you!`.trim();
                 <h2 className="text-2xl font-display font-bold mb-8 text-center">
                   Choose Your Service
                 </h2>
-                <div className="grid sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {SERVICES.map((service) => {
                     const Icon = SERVICE_ICONS[service.serviceType] ?? Snowflake;
                     return (
