@@ -6,7 +6,7 @@ export function Footer() {
   return (
     <footer className="bg-card border-t border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid md:grid-cols-4 gap-8">
+        <div className="grid md:grid-cols-3 gap-8">
           <div>
             <div className="flex items-center gap-3 mb-4">
               <Image
@@ -29,10 +29,11 @@ export function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Quick Links</h3>
             <ul className="space-y-2 text-sm">
+              <li><Link href="/booking" className="text-muted-foreground hover:text-foreground">Book a Session</Link></li>
               <li><Link href="/services" className="text-muted-foreground hover:text-foreground">Services</Link></li>
-              <li><Link href="/pricing" className="text-muted-foreground hover:text-foreground">Pricing</Link></li>
               <li><Link href="/testimonials" className="text-muted-foreground hover:text-foreground">Testimonials</Link></li>
               <li><Link href="/blog" className="text-muted-foreground hover:text-foreground">Blog</Link></li>
+              <li><Link href="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link></li>
             </ul>
           </div>
 
@@ -53,25 +54,14 @@ export function Footer() {
               </li>
             </ul>
           </div>
-
-          <div>
-            <h3 className="font-semibold mb-4">Account</h3>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/login" className="text-muted-foreground hover:text-foreground">Login</Link></li>
-              <li><Link href="/signup" className="text-muted-foreground hover:text-foreground">Sign Up</Link></li>
-              <li><Link href="/account" className="text-muted-foreground hover:text-foreground">My Bookings</Link></li>
-              <li>
-                <Link href="/admin" className="text-muted-foreground hover:text-foreground flex items-center gap-1">
-                  <Shield className="w-3 h-3" />
-                  Admin
-                </Link>
-              </li>
-            </ul>
-          </div>
         </div>
 
-        <div className="mt-8 pt-8 border-t border-border text-center text-sm text-muted-foreground">
+        <div className="mt-8 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
           <p>© {new Date().getFullYear()} CryoRevive by Livnexa. All rights reserved.</p>
+          <Link href="/admin" className="flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors">
+            <Shield className="w-3 h-3" />
+            Admin
+          </Link>
         </div>
       </div>
     </footer>
