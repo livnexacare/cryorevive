@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useRouter } from "next/router";
 import Link from "next/link";
 import { SEO } from "@/components/SEO";
 import { Navigation } from "@/components/Navigation";
@@ -7,55 +6,82 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus } from "lucide-react";
+import { UserPlus, CheckCircle } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function Signup() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     password: "",
-    confirmPassword: ""
+    confirmPassword: "",
   });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     setError("");
 
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
+      setLoading(false);
       return;
     }
 
     if (formData.password.length < 6) {
       setError("Password must be at least 6 characters");
+      setLoading(false);
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    
-    if (users.find((u: any) => u.email === formData.email)) {
-      setError("Email already registered");
-      return;
-    }
-
-    const newUser = {
-      id: Date.now().toString(),
-      name: formData.name,
+    const { error: signUpError } = await supabase.auth.signUp({
       email: formData.email,
-      phone: formData.phone,
       password: formData.password,
-      createdAt: new Date().toISOString()
-    };
+      options: {
+        data: {
+          full_name: formData.name,
+          phone: formData.phone,
+        },
+      },
+    });
 
-    users.push(newUser);
-    localStorage.setItem("users", JSON.stringify(users));
-    localStorage.setItem("current_user", JSON.stringify(newUser));
-    
-    router.push("/account");
+    if (signUpError) {
+      setError(signUpError.message);
+    } else {
+      setSuccess(true);
+    }
+    setLoading(false);
   };
+
+  if (success) {
+    return (
+      <>
+        <SEO title="Sign Up - CryoRevive" />
+        <Navigation />
+        <main className="min-h-screen bg-background flex items-center justify-center p-4 pt-24">
+          <Card className="w-full max-w-md">
+            <CardContent className="pt-8 pb-8 text-center space-y-4">
+              <CheckCircle className="w-12 h-12 text-green-500 mx-auto" />
+              <h2 className="text-2xl font-bold">Account Created!</h2>
+              <p className="text-muted-foreground">
+                Please check your email to verify your account before logging in.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Already verified?{" "}
+                <Link href="/login" className="text-primary hover:underline font-medium">
+                  Log in here
+                </Link>
+              </p>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -126,11 +152,9 @@ export default function Signup() {
                   required
                 />
               </div>
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
-              <Button type="submit" className="w-full">
-                Create Account
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Creating account…" : "Create Account"}
               </Button>
             </form>
             <div className="mt-4 text-center text-sm">

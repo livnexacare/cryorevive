@@ -1,23 +1,25 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Menu, X, User } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import type { User } from "@supabase/supabase-js";
 
 export function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const checkAuth = () => {
-      const user = localStorage.getItem("current_user");
-      setIsLoggedIn(!!user);
-    };
-    
-    checkAuth();
-    window.addEventListener("storage", checkAuth);
-    
-    return () => window.removeEventListener("storage", checkAuth);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const navLinks = [
@@ -28,6 +30,10 @@ export function Navigation() {
     { href: "/blog", label: "Blog" },
     { href: "/contact", label: "Contact" },
   ];
+
+  const userInitial = user?.user_metadata?.["full_name"]
+    ? (user.user_metadata["full_name"] as string).charAt(0).toUpperCase()
+    : user?.email?.charAt(0).toUpperCase() ?? "U";
 
   return (
     <nav className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
@@ -57,10 +63,12 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
-            {isLoggedIn ? (
+            {user ? (
               <Link href="/account">
-                <Button variant="outline" size="sm">
-                  <User className="w-4 h-4 mr-2" />
+                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                  <span className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold">
+                    {userInitial}
+                  </span>
                   My Account
                 </Button>
               </Link>
@@ -104,10 +112,12 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
-            {isLoggedIn ? (
+            {user ? (
               <Link href="/account" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="outline" className="w-full">
-                  <User className="w-4 h-4 mr-2" />
+                <Button variant="outline" className="w-full flex items-center gap-2">
+                  <span className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold">
+                    {userInitial}
+                  </span>
                   My Account
                 </Button>
               </Link>

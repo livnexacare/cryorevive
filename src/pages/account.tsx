@@ -7,46 +7,63 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { User, Calendar, Mail, Phone, LogOut, Clock, MapPin, Users } from "lucide-react";
+import { User, Calendar, Mail, Phone, LogOut, Clock } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { API_URL } from "@/lib/api";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface Booking {
   id: string;
-  eventName: string;
-  eventDate: string;
-  eventTime: string;
-  location: string;
-  athleteCount: number;
-  organizerName: string;
-  organizerEmail: string;
-  organizerPhone: string;
-  totalAmount: number;
+  name: string;
+  email: string;
+  phone: string;
+  service_type: string;
+  date: string;
+  time_slot: string;
+  notes: string;
   status: string;
-  createdAt: string;
-  userId?: string;
+  payment_status: string;
+  created_at: string;
 }
 
 export default function Account() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const currentUser = localStorage.getItem("current_user");
-    if (!currentUser) {
-      router.push("/login");
-      return;
-    }
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
 
-    const userData = JSON.parse(currentUser);
-    setUser(userData);
+      if (!session) {
+        router.push("/login");
+        return;
+      }
 
-    const allBookings = JSON.parse(localStorage.getItem("bookings") || "[]");
-    const userBookings = allBookings.filter((b: Booking) => b.userId === userData.id);
-    setBookings(userBookings);
+      setUser(session.user);
+
+      try {
+        const res = await fetch(
+          `${API_URL}/api/bookings/user?email=${encodeURIComponent(session.user.email ?? "")}`,
+          { headers: { "Content-Type": "application/json" } }
+        );
+        if (res.ok) {
+          const data = await res.json() as Booking[];
+          setBookings(data);
+        }
+      } catch {
+        // non-fatal — bookings section stays empty
+      }
+
+      setLoading(false);
+    };
+
+    getSession();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("current_user");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     router.push("/");
   };
 
@@ -55,24 +72,40 @@ export default function Account() {
       pending: "secondary",
       confirmed: "default",
       completed: "outline",
-      cancelled: "destructive"
+      cancelled: "destructive",
     };
-    return <Badge variant={variants[status] || "default"}>{status}</Badge>;
+    return <Badge variant={variants[status] ?? "default"}>{status}</Badge>;
   };
 
-  const upcomingBookings = bookings.filter(b => {
-    const eventDate = new Date(b.eventDate);
-    return eventDate >= new Date() && b.status !== "cancelled" && b.status !== "completed";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const upcomingBookings = bookings.filter((b) => {
+    const d = new Date(b.date);
+    return d >= today && b.status !== "cancelled" && b.status !== "completed";
   });
 
-  const pastBookings = bookings.filter(b => {
-    const eventDate = new Date(b.eventDate);
-    return eventDate < new Date() || b.status === "completed" || b.status === "cancelled";
+  const pastBookings = bookings.filter((b) => {
+    const d = new Date(b.date);
+    return d < today || b.status === "completed" || b.status === "cancelled";
   });
 
-  if (!user) {
-    return null;
+  const fullName = (user?.user_metadata?.["full_name"] as string | undefined) ?? user?.email ?? "Account";
+  const memberSince = user?.created_at ? new Date(user.created_at).toLocaleDateString() : "";
+
+  if (loading) {
+    return (
+      <>
+        <SEO title="My Account - CryoRevive" />
+        <Navigation />
+        <main className="min-h-screen bg-background flex items-center justify-center pt-24">
+          <p className="text-muted-foreground">Loading…</p>
+        </main>
+      </>
+    );
   }
+
+  if (!user) return null;
 
   return (
     <>
@@ -90,8 +123,10 @@ export default function Account() {
                       <User className="w-8 h-8 text-primary" />
                     </div>
                     <div>
-                      <CardTitle>{user.name}</CardTitle>
-                      <CardDescription>Member since {new Date(user.createdAt).toLocaleDateString()}</CardDescription>
+                      <CardTitle>{fullName}</CardTitle>
+                      {memberSince && (
+                        <CardDescription>Member since {memberSince}</CardDescription>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -101,10 +136,14 @@ export default function Account() {
                       <Mail className="w-4 h-4 text-muted-foreground" />
                       <span className="text-muted-foreground">{user.email}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-sm">
-                      <Phone className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">{user.phone}</span>
-                    </div>
+                    {(user.user_metadata?.["phone"] as string | undefined) && (
+                      <div className="flex items-center gap-3 text-sm">
+                        <Phone className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">
+                          {user.user_metadata["phone"] as string}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <Separator />
                   <div className="grid grid-cols-2 gap-4 text-center">
@@ -130,14 +169,14 @@ export default function Account() {
             <div className="lg:col-span-2 space-y-6">
               {/* Upcoming Bookings */}
               <div>
-                <h2 className="text-2xl font-display font-bold mb-4">Upcoming Events</h2>
+                <h2 className="text-2xl font-display font-bold mb-4">Upcoming Bookings</h2>
                 {upcomingBookings.length === 0 ? (
                   <Card>
                     <CardContent className="py-12 text-center">
                       <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground mb-4">No upcoming bookings</p>
-                      <Link href="/contact">
-                        <Button>Book an Event</Button>
+                      <Link href="/booking">
+                        <Button>Book Your First Session</Button>
                       </Link>
                     </CardContent>
                   </Card>
@@ -148,7 +187,9 @@ export default function Account() {
                         <CardHeader>
                           <div className="flex items-start justify-between">
                             <div>
-                              <CardTitle>{booking.eventName}</CardTitle>
+                              <CardTitle className="capitalize">
+                                {booking.service_type.replace(/_/g, " ")}
+                              </CardTitle>
                               <CardDescription>Booking #{booking.id.slice(0, 8)}</CardDescription>
                             </div>
                             {getStatusBadge(booking.status)}
@@ -158,25 +199,19 @@ export default function Account() {
                           <div className="grid sm:grid-cols-2 gap-3 text-sm">
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-muted-foreground" />
-                              <span>{new Date(booking.eventDate).toLocaleDateString()}</span>
+                              <span>{new Date(booking.date).toLocaleDateString()}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <Clock className="w-4 h-4 text-muted-foreground" />
-                              <span>{booking.eventTime}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <MapPin className="w-4 h-4 text-muted-foreground" />
-                              <span>{booking.location}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Users className="w-4 h-4 text-muted-foreground" />
-                              <span>{booking.athleteCount} athletes</span>
+                              <span>{booking.time_slot}</span>
                             </div>
                           </div>
                           <Separator />
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Total Amount</span>
-                            <span className="text-lg font-bold">₹{booking.totalAmount.toLocaleString()}</span>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Payment</span>
+                            <Badge variant={booking.payment_status === "paid" ? "default" : "secondary"}>
+                              {booking.payment_status}
+                            </Badge>
                           </div>
                         </CardContent>
                       </Card>
@@ -188,14 +223,16 @@ export default function Account() {
               {/* Past Bookings */}
               {pastBookings.length > 0 && (
                 <div>
-                  <h2 className="text-2xl font-display font-bold mb-4">Past Events</h2>
+                  <h2 className="text-2xl font-display font-bold mb-4">Past Bookings</h2>
                   <div className="space-y-4">
                     {pastBookings.map((booking) => (
                       <Card key={booking.id} className="opacity-75">
                         <CardHeader>
                           <div className="flex items-start justify-between">
                             <div>
-                              <CardTitle>{booking.eventName}</CardTitle>
+                              <CardTitle className="capitalize">
+                                {booking.service_type.replace(/_/g, " ")}
+                              </CardTitle>
                               <CardDescription>Booking #{booking.id.slice(0, 8)}</CardDescription>
                             </div>
                             {getStatusBadge(booking.status)}
@@ -205,11 +242,11 @@ export default function Account() {
                           <div className="grid sm:grid-cols-2 gap-3 text-sm">
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-muted-foreground" />
-                              <span>{new Date(booking.eventDate).toLocaleDateString()}</span>
+                              <span>{new Date(booking.date).toLocaleDateString()}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Users className="w-4 h-4 text-muted-foreground" />
-                              <span>{booking.athleteCount} athletes</span>
+                              <Clock className="w-4 h-4 text-muted-foreground" />
+                              <span>{booking.time_slot}</span>
                             </div>
                           </div>
                         </CardContent>

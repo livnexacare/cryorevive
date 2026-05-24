@@ -112,6 +112,22 @@ async def list_bookings(
     return rows_to_list(rows)
 
 
+@router.get("/bookings/user")
+async def get_user_bookings(email: str = Query(...)):
+    """Get bookings for a specific user email — no auth required (filtered by email)"""
+    try:
+        rows = await db_fetch(
+            """SELECT * FROM bookings
+               WHERE email = $1
+               ORDER BY created_at DESC
+               LIMIT 50""",
+            email,
+        )
+        return rows_to_list(rows)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/bookings/{booking_id}")
 async def get_booking(booking_id: str, x_admin_key: str = Header(default="")):
     _require_admin(x_admin_key)
