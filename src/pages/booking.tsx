@@ -9,33 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, Clock, Users, MapPin, Snowflake, Flame, Activity } from "lucide-react";
 import { API_URL, parseTimeSlot } from "@/lib/api";
+import { SERVICES } from "@/lib/services";
 
-const IN_CENTRE_SERVICES = [
-  { 
-    id: "ice-bath", 
-    name: "Ice Bath", 
-    price: 500, 
-    duration: "15 min",
-    icon: Snowflake,
-    description: "Cold plunge therapy for recovery and inflammation reduction"
-  },
-  { 
-    id: "sauna", 
-    name: "Steam Sauna", 
-    price: 600, 
-    duration: "20 min",
-    icon: Flame,
-    description: "Heat therapy for detoxification and relaxation"
-  },
-  { 
-    id: "contrast", 
-    name: "Contrast Therapy", 
-    price: 900, 
-    duration: "30 min",
-    icon: Activity,
-    description: "Alternating hot and cold therapy for maximum recovery"
-  }
-];
+const SERVICE_ICONS: Record<string, typeof Snowflake> = {
+  ice_bath: Snowflake,
+  steam_sauna: Flame,
+  contrast_therapy: Activity,
+};
 
 const TIME_SLOTS = [
   "05:00 AM - 06:00 AM",
@@ -134,7 +114,7 @@ export default function Booking() {
     e.preventDefault();
     setIsProcessing(true);
 
-    const service = IN_CENTRE_SERVICES.find(s => s.id === selectedService);
+    const service = SERVICES.find(s => s.serviceType === selectedService);
     if (!service) return;
 
     const bookingData = {
@@ -198,11 +178,6 @@ export default function Booking() {
             if (verifyData.success) {
               // Persist to backend
               try {
-                const serviceTypeMap: Record<string, string> = {
-                  "ice-bath": "ice_bath",
-                  "sauna": "steam_sauna",
-                  "contrast": "contrast_therapy",
-                };
                 await fetch(`${API_URL}/api/bookings`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -210,7 +185,7 @@ export default function Booking() {
                     name: bookingData.customerName,
                     email: bookingData.customerEmail,
                     phone: bookingData.customerPhone,
-                    service_type: serviceTypeMap[selectedService] || "ice_bath",
+                    service_type: selectedService,
                     date: bookingData.date,
                     time_slot: parseTimeSlot(bookingData.timeSlot),
                     notes: bookingData.notes || `Order: ${response.razorpay_order_id}`,
@@ -477,25 +452,25 @@ export default function Booking() {
                   <CardContent className="p-6">
                     {/* Service Selection */}
                     <div className="grid md:grid-cols-3 gap-4 mb-8">
-                      {IN_CENTRE_SERVICES.map((service) => {
-                        const Icon = service.icon;
+                      {SERVICES.map((service) => {
+                        const Icon = SERVICE_ICONS[service.serviceType] ?? Snowflake;
                         return (
                           <button
                             key={service.id}
                             type="button"
-                            onClick={() => setSelectedService(service.id)}
+                            onClick={() => setSelectedService(service.serviceType)}
                             className={`p-4 border-2 rounded-sm transition-all ${
-                              selectedService === service.id
+                              selectedService === service.serviceType
                                 ? "border-primary bg-primary/5"
                                 : "border-border hover:border-primary/50"
                             }`}
                           >
                             <Icon className={`h-8 w-8 mx-auto mb-3 ${
-                              selectedService === service.id ? "text-primary" : "text-muted-foreground"
+                              selectedService === service.serviceType ? "text-primary" : "text-muted-foreground"
                             }`} />
                             <h3 className="font-display font-bold mb-1">{service.name}</h3>
                             <p className="text-sm text-muted-foreground mb-2">{service.duration}</p>
-                            <p className="text-lg font-bold text-primary">₹{service.price}</p>
+                            <p className="text-lg font-bold text-primary">{service.priceDisplay}</p>
                             <p className="text-xs text-muted-foreground mt-2">{service.description}</p>
                           </button>
                         );
@@ -601,7 +576,7 @@ export default function Booking() {
                           className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
                           disabled={isProcessing}
                         >
-                          {isProcessing ? "Processing..." : `Pay ₹${IN_CENTRE_SERVICES.find(s => s.id === selectedService)?.price} - Proceed to Payment`}
+                          {isProcessing ? "Processing..." : `Pay ${SERVICES.find(s => s.serviceType === selectedService)?.priceDisplay} - Proceed to Payment`}
                         </Button>
                       </form>
                     )}

@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Zap, Trophy, Users } from "lucide-react";
 import Link from "next/link";
+import { getService } from "@/lib/services";
 
 export default function Pricing() {
   const singleSessions = [
     {
       title: "Ice Bath Session",
-      price: "₹800",
+      price: getService("ice_bath")?.priceDisplay ?? "₹800",
       duration: "15 minutes",
       description: "Single cold plunge therapy session",
       features: [
@@ -23,7 +24,7 @@ export default function Pricing() {
     },
     {
       title: "Steam Sauna Session",
-      price: "₹700",
+      price: getService("steam_sauna")?.priceDisplay ?? "₹700",
       duration: "20 minutes",
       description: "Single high-heat sauna session",
       features: [
@@ -35,7 +36,7 @@ export default function Pricing() {
     },
     {
       title: "Contrast Therapy",
-      price: "₹1,400",
+      price: getService("contrast_therapy")?.priceDisplay ?? "₹1,400",
       duration: "45 minutes",
       description: "Complete hot-cold cycle protocol",
       features: [
