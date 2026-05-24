@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { format } from "date-fns";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
@@ -34,6 +35,7 @@ const today = new Date();
 today.setHours(0, 0, 0, 0);
 
 export default function Booking() {
+  const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -41,6 +43,17 @@ export default function Booking() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("+91 ");
   const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    const { service } = router.query;
+    if (typeof service === "string") {
+      const found = SERVICES.find((s) => s.serviceType === service);
+      if (found) {
+        setSelectedService(found);
+        setStep(2);
+      }
+    }
+  }, [router.query]);
 
   const handleServiceSelect = (service: Service) => {
     setSelectedService(service);

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { useRouter } from "next/router";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
@@ -7,6 +8,8 @@ import { Snowflake, Droplets, Repeat, Truck, Clock, Thermometer, CheckCircle } f
 import Link from "next/link";
 
 export default function Services() {
+  const router = useRouter();
+
   const services = [
     {
       icon: Snowflake,
@@ -17,6 +20,7 @@ export default function Services() {
       duration: "3-15 minutes",
       color: "text-primary",
       bgColor: "bg-primary/10",
+      serviceType: "ice_bath",
       benefits: [
         "Reduces muscle soreness by up to 60%",
         "Decreases inflammation at cellular level",
@@ -35,6 +39,7 @@ export default function Services() {
       duration: "15-20 minutes",
       color: "text-accent",
       bgColor: "bg-accent/10",
+      serviceType: "steam_sauna",
       benefits: [
         "Deep muscle relaxation and tension relief",
         "Detoxification through increased sweating",
@@ -53,6 +58,7 @@ export default function Services() {
       duration: "30-45 minutes",
       color: "text-primary",
       bgColor: "bg-primary/10",
+      serviceType: "contrast_therapy",
       benefits: [
         "Maximizes recovery through contrast cycles",
         "Reduces inflammation more effectively",
@@ -71,6 +77,7 @@ export default function Services() {
       duration: "Custom sessions",
       color: "text-accent",
       bgColor: "bg-accent/10",
+      serviceType: null,
       benefits: [
         "Professional on-site setup and supervision",
         "Full ice bath and sauna equipment",
@@ -81,6 +88,10 @@ export default function Services() {
       image: "/Mobile%20recovery%20unit.png"
     }
   ];
+
+  const handleBookService = (serviceType: string | null) => {
+    if (serviceType) router.push(`/booking?service=${serviceType}`);
+  };
 
   return (
     <>
@@ -171,14 +182,24 @@ export default function Services() {
                       ))}
                     </div>
 
-                    <Link href="/booking">
-                      <Button 
+                    {service.serviceType ? (
+                      <Button
                         size="lg"
+                        onClick={() => handleBookService(service.serviceType)}
                         className={`${service.color === 'text-primary' ? 'bg-primary hover:bg-primary/90' : 'bg-accent hover:bg-accent/90'} text-background font-semibold mt-6`}
                       >
                         Book {service.title}
                       </Button>
-                    </Link>
+                    ) : (
+                      <Link href="/contact">
+                        <Button
+                          size="lg"
+                          className="bg-accent hover:bg-accent/90 text-background font-semibold mt-6"
+                        >
+                          Request Mobile Service
+                        </Button>
+                      </Link>
+                    )}
                   </div>
                 </div>
               );
