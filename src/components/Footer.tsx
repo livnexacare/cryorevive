@@ -30,7 +30,7 @@ export function Footer() {
             <h3 className="font-semibold mb-4">Quick Links</h3>
             <ul className="space-y-2 text-sm">
               <li><Link href="/booking" className="text-muted-foreground hover:text-foreground">Book a Session</Link></li>
-              <li><Link href="/book-event" className="text-muted-foreground hover:text-foreground">Mobile Event Booking</Link></li>
+              <li><Link href="/booking?tab=event" className="text-muted-foreground hover:text-foreground">Mobile Event Booking</Link></li>
               <li><Link href="/services" className="text-muted-foreground hover:text-foreground">Services</Link></li>
               <li><Link href="/testimonials" className="text-muted-foreground hover:text-foreground">Testimonials</Link></li>
               <li><Link href="/blog" className="text-muted-foreground hover:text-foreground">Blog</Link></li>

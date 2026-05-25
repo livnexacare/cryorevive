@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
-import { Snowflake, Flame, Activity, Zap, CheckCircle, ChevronLeft, MapPin } from "lucide-react";
+import { Snowflake, Flame, Activity, Zap, CheckCircle, ChevronLeft } from "lucide-react";
 import { SERVICES } from "@/lib/services";
 import type { Service } from "@/lib/services";
 
@@ -28,8 +28,18 @@ const TIME_SLOTS = [
   "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM", "6:00 PM",
 ];
 
+const EVENT_TYPES = [
+  "Marathon / Running Event",
+  "Sports Meet",
+  "Gym Session",
+  "Corporate Wellness",
+  "Team Training Camp",
+  "Other",
+];
+
 const STEP_LABELS = ["Service", "Date & Time", "Details"];
 
+type Tab = "incentre" | "event";
 type Step = 1 | 2 | 3 | "success";
 
 const today = new Date();
@@ -37,6 +47,10 @@ today.setHours(0, 0, 0, 0);
 
 export default function Booking() {
   const router = useRouter();
+
+  const [activeTab, setActiveTab] = useState<Tab>("incentre");
+
+  // In-centre wizard state
   const [step, setStep] = useState<Step>(1);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -45,30 +59,56 @@ export default function Booking() {
   const [phone, setPhone] = useState("+91 ");
   const [notes, setNotes] = useState("");
 
+  // Event form state
+  const [eventSuccess, setEventSuccess] = useState(false);
+  const [eventName, setEventName] = useState("");
+  const [eventType, setEventType] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [eventTimeSlot, setEventTimeSlot] = useState("");
+  const [athletes, setAthletes] = useState("");
+  const [location, setLocation] = useState("");
+  const [organizerName, setOrganizerName] = useState("");
+  const [eventPhone, setEventPhone] = useState("+91 ");
+  const [email, setEmail] = useState("");
+  const [requirements, setRequirements] = useState("");
+
   useEffect(() => {
-    const { service } = router.query;
+    const { service, tab } = router.query;
+    if (tab === "event") {
+      setActiveTab("event");
+    }
     if (typeof service === "string") {
       const found = SERVICES.find((s) => s.serviceType === service);
       if (found) {
+        setActiveTab("incentre");
         setSelectedService(found);
         setStep(2);
       }
     }
   }, [router.query]);
 
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    if (tab === "incentre") {
+      setStep(1);
+      setSelectedService(null);
+      setSelectedDate(undefined);
+      setSelectedTimeSlot("");
+    }
+  };
+
   const handleServiceSelect = (service: Service) => {
     setSelectedService(service);
     setStep(2);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleInCentreSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedService || !selectedDate || !selectedTimeSlot) return;
 
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const dateFormatted = format(selectedDate, "EEEE, dd MMMM yyyy");
 
-    // Fire-and-forget — backend logging, non-blocking
     if (API_URL) {
       fetch(`${API_URL}/api/bookings`, {
         method: "POST",
@@ -95,10 +135,7 @@ export default function Booking() {
 
 Please confirm my booking. Thank you!`.trim();
 
-    window.open(
-      `https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(message)}`,
-      "_blank"
-    );
+    window.open(`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(message)}`, "_blank");
     setStep("success");
   };
 
@@ -112,13 +149,34 @@ Please confirm my booking. Thank you!`.trim();
     setNotes("");
   };
 
+  const handleEventSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const message = `🚐 *CryoRevive Mobile Event Booking*
+
+*Event:* ${eventName}
+*Type:* ${eventType}
+*Date:* ${eventDate}
+*Time:* ${eventTimeSlot}
+*Athletes:* ${athletes}
+*Location:* ${location}
+
+*Organizer:* ${organizerName}
+*Phone:* ${eventPhone}${email ? `\n*Email:* ${email}` : ""}${requirements ? `\n*Requirements:* ${requirements}` : ""}
+
+Please contact me to confirm. Thank you!`.trim();
+
+    window.open(`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(message)}`, "_blank");
+    setEventSuccess(true);
+  };
+
   const currentStepNum = typeof step === "number" ? step : 4;
 
   return (
     <>
       <SEO
         title="Book a Session | CryoRevive"
-        description="Book ice bath, steam sauna, or contrast therapy sessions. Instant confirmation via WhatsApp."
+        description="Book ice bath, steam sauna, contrast therapy, or cryo chamber sessions. Instant confirmation via WhatsApp."
       />
       <Navigation />
       <main className="min-h-screen bg-background">
@@ -134,312 +192,507 @@ Please confirm my booking. Thank you!`.trim();
               Start Your Recovery Journey
             </h1>
             <p className="text-lg text-muted-foreground">
-              Pick a service, choose a slot, and confirm in seconds via WhatsApp.
+              Pick a service, choose a slot, and confirm via WhatsApp.
             </p>
           </div>
         </section>
 
-        {/* Booking wizard */}
+        {/* Tabs + content */}
         <section className="py-16 bg-background">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
 
-            {/* Step progress */}
-            {step !== "success" && (
-              <div className="flex items-center justify-center mb-12">
-                {STEP_LABELS.map((label, i) => {
-                  const num = i + 1;
-                  const done = currentStepNum > num;
-                  const active = currentStepNum === num;
-                  return (
-                    <div key={num} className="flex items-center">
-                      <div className="flex flex-col items-center">
-                        <div
-                          className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                            done
-                              ? "bg-primary text-primary-foreground"
-                              : active
-                              ? "bg-primary text-primary-foreground ring-4 ring-primary/25"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {done ? "✓" : num}
+            {/* Tab toggle */}
+            <div className="flex rounded-sm border border-border overflow-hidden mb-10">
+              <button
+                type="button"
+                onClick={() => handleTabChange("incentre")}
+                className={`flex-1 py-3 px-6 text-sm font-semibold transition-colors ${
+                  activeTab === "incentre"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                In-Centre Sessions
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabChange("event")}
+                className={`flex-1 py-3 px-6 text-sm font-semibold transition-colors border-l border-border ${
+                  activeTab === "event"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Mobile Event Booking
+              </button>
+            </div>
+
+            {/* ══ In-Centre Tab ══ */}
+            {activeTab === "incentre" && (
+              <div>
+                {step !== "success" && (
+                  <div className="flex items-center justify-center mb-12">
+                    {STEP_LABELS.map((label, i) => {
+                      const num = i + 1;
+                      const done = currentStepNum > num;
+                      const active = currentStepNum === num;
+                      return (
+                        <div key={num} className="flex items-center">
+                          <div className="flex flex-col items-center">
+                            <div
+                              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                                done
+                                  ? "bg-primary text-primary-foreground"
+                                  : active
+                                  ? "bg-primary text-primary-foreground ring-4 ring-primary/25"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {done ? "✓" : num}
+                            </div>
+                            <span
+                              className={`text-xs mt-1.5 font-medium whitespace-nowrap ${
+                                active ? "text-foreground" : "text-muted-foreground"
+                              }`}
+                            >
+                              {label}
+                            </span>
+                          </div>
+                          {i < STEP_LABELS.length - 1 && (
+                            <div
+                              className={`h-0.5 w-16 sm:w-24 mx-2 mb-5 transition-colors ${
+                                done ? "bg-primary" : "bg-muted"
+                              }`}
+                            />
+                          )}
                         </div>
-                        <span
-                          className={`text-xs mt-1.5 font-medium whitespace-nowrap ${
-                            active ? "text-foreground" : "text-muted-foreground"
-                          }`}
-                        >
-                          {label}
-                        </span>
-                      </div>
-                      {i < STEP_LABELS.length - 1 && (
-                        <div
-                          className={`h-0.5 w-16 sm:w-24 mx-2 mb-5 transition-colors ${
-                            done ? "bg-primary" : "bg-muted"
-                          }`}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── Step 1: Select Service ── */}
-            {step === 1 && (
-              <div>
-                <h2 className="text-2xl font-display font-bold mb-8 text-center">
-                  Choose Your Service
-                </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  {SERVICES.map((service) => {
-                    const Icon = SERVICE_ICONS[service.serviceType] ?? Snowflake;
-                    return (
-                      <button
-                        key={service.id}
-                        type="button"
-                        onClick={() => handleServiceSelect(service)}
-                        className="p-6 border-2 border-border hover:border-primary rounded-sm transition-all text-center group cursor-pointer"
-                      >
-                        <Icon className="h-10 w-10 mx-auto mb-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                        <h3 className="font-display font-bold mb-1">{service.name}</h3>
-                        <p className="text-sm text-muted-foreground mb-3">{service.duration}</p>
-                        <p className="text-xl font-bold text-primary">{service.priceDisplay}</p>
-                        <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                          {service.description}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ── Step 2: Date & Time ── */}
-            {step === 2 && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Back
-                </button>
-
-                <h2 className="text-2xl font-display font-bold mb-1 text-center">
-                  Select Date &amp; Time
-                </h2>
-                {selectedService && (
-                  <p className="text-center text-muted-foreground mb-8 text-sm">
-                    {selectedService.name} &middot; {selectedService.duration} &middot; {selectedService.priceDisplay}
-                  </p>
+                      );
+                    })}
+                  </div>
                 )}
 
-                <div className="grid md:grid-cols-2 gap-6">
-                  {/* Calendar */}
-                  <Card className="bg-card border-border">
-                    <CardContent className="p-4 flex justify-center">
-                      <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(d) => setSelectedDate(d)}
-                        disabled={(date) => date < today}
-                        initialFocus
-                      />
+                {/* Step 1: Service */}
+                {step === 1 && (
+                  <div>
+                    <h2 className="text-2xl font-display font-bold mb-8 text-center">
+                      Choose Your Service
+                    </h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {SERVICES.map((service) => {
+                        const Icon = SERVICE_ICONS[service.serviceType] ?? Snowflake;
+                        return (
+                          <button
+                            key={service.id}
+                            type="button"
+                            onClick={() => handleServiceSelect(service)}
+                            className="p-5 border-2 border-border hover:border-primary rounded-sm transition-all text-center group cursor-pointer"
+                          >
+                            <Icon className="h-9 w-9 mx-auto mb-3 text-muted-foreground group-hover:text-primary transition-colors" />
+                            <h3 className="font-display font-bold text-sm mb-1">{service.name}</h3>
+                            <p className="text-xs text-muted-foreground mb-2">{service.duration}</p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                              {service.description}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 2: Date & Time */}
+                {step === 2 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Back
+                    </button>
+
+                    <h2 className="text-2xl font-display font-bold mb-1 text-center">
+                      Select Date &amp; Time
+                    </h2>
+                    {selectedService && (
+                      <p className="text-center text-muted-foreground mb-8 text-sm">
+                        {selectedService.name} &middot; {selectedService.duration}
+                      </p>
+                    )}
+
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <Card className="bg-card border-border">
+                        <CardContent className="p-4 flex justify-center">
+                          <Calendar
+                            mode="single"
+                            selected={selectedDate}
+                            onSelect={(d) => setSelectedDate(d)}
+                            disabled={(date) => date < today}
+                            initialFocus
+                          />
+                        </CardContent>
+                      </Card>
+
+                      <div className="space-y-3">
+                        <h3 className="font-semibold text-sm">
+                          {selectedDate
+                            ? `Available times for ${format(selectedDate, "EEE, d MMM")}`
+                            : "Pick a date to see available times"}
+                        </h3>
+                        <div className="grid grid-cols-3 gap-2">
+                          {TIME_SLOTS.map((slot) => (
+                            <button
+                              key={slot}
+                              type="button"
+                              disabled={!selectedDate}
+                              onClick={() => setSelectedTimeSlot(slot)}
+                              className={`py-2 px-2 text-sm rounded-sm border-2 transition-all disabled:opacity-35 disabled:cursor-not-allowed ${
+                                selectedTimeSlot === slot
+                                  ? "border-primary bg-primary/10 text-primary font-semibold"
+                                  : "border-border hover:border-primary/50"
+                              }`}
+                            >
+                              {slot}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground pt-1">
+                          Subject to availability — we&apos;ll confirm via WhatsApp
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-8 text-center">
+                      <Button
+                        type="button"
+                        onClick={() => setStep(3)}
+                        disabled={!selectedDate || !selectedTimeSlot}
+                        size="lg"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-12"
+                      >
+                        Next: Your Details
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Details */}
+                {step === 3 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Back
+                    </button>
+
+                    <h2 className="text-2xl font-display font-bold mb-1 text-center">
+                      Your Details
+                    </h2>
+                    {selectedService && selectedDate && (
+                      <p className="text-center text-sm text-muted-foreground mb-8">
+                        {selectedService.name} &middot; {format(selectedDate, "d MMM yyyy")} &middot; {selectedTimeSlot}
+                      </p>
+                    )}
+
+                    <Card className="bg-card border-border max-w-lg mx-auto">
+                      <CardContent className="p-6">
+                        <form onSubmit={handleInCentreSubmit} className="space-y-5">
+                          <div className="space-y-2">
+                            <label htmlFor="name" className="text-sm font-semibold text-foreground">
+                              Full Name *
+                            </label>
+                            <Input
+                              id="name"
+                              type="text"
+                              placeholder="John Doe"
+                              value={name}
+                              onChange={(e) => setName(e.target.value)}
+                              className="bg-background border-border"
+                              required
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label htmlFor="phone" className="text-sm font-semibold text-foreground">
+                              WhatsApp Number *
+                            </label>
+                            <Input
+                              id="phone"
+                              type="tel"
+                              placeholder="+91 98914 30920"
+                              value={phone}
+                              onChange={(e) => setPhone(e.target.value)}
+                              className="bg-background border-border"
+                              required
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              We&apos;ll send your booking confirmation to this number
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label htmlFor="notes" className="text-sm font-semibold text-foreground">
+                              Notes (Optional)
+                            </label>
+                            <Textarea
+                              id="notes"
+                              placeholder="Any health concerns, preferences, or questions…"
+                              value={notes}
+                              onChange={(e) => setNotes(e.target.value)}
+                              className="bg-background border-border min-h-[80px]"
+                            />
+                          </div>
+
+                          <Button
+                            type="submit"
+                            size="lg"
+                            className="w-full bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold"
+                            disabled={!name.trim() || phone.trim().length < 6}
+                          >
+                            Book via WhatsApp
+                          </Button>
+                          <p className="text-xs text-muted-foreground text-center">
+                            WhatsApp opens with your booking details pre-filled — just hit send.
+                          </p>
+                        </form>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Success */}
+                {step === "success" && (
+                  <Card className="bg-card border-border max-w-lg mx-auto">
+                    <CardContent className="py-16 text-center space-y-4">
+                      <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
+                      <h2 className="text-2xl font-display font-bold">Booking request sent!</h2>
+                      <p className="text-muted-foreground">
+                        We&apos;ll confirm your slot on WhatsApp shortly.
+                      </p>
+                      <Button
+                        type="button"
+                        onClick={handleBookAnother}
+                        variant="outline"
+                        className="mt-2"
+                      >
+                        Book Another Session
+                      </Button>
                     </CardContent>
                   </Card>
-
-                  {/* Time slots */}
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-sm">
-                      {selectedDate
-                        ? `Available times for ${format(selectedDate, "EEE, d MMM")}`
-                        : "Pick a date to see available times"}
-                    </h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      {TIME_SLOTS.map((slot) => (
-                        <button
-                          key={slot}
-                          type="button"
-                          disabled={!selectedDate}
-                          onClick={() => setSelectedTimeSlot(slot)}
-                          className={`py-2 px-2 text-sm rounded-sm border-2 transition-all disabled:opacity-35 disabled:cursor-not-allowed ${
-                            selectedTimeSlot === slot
-                              ? "border-primary bg-primary/10 text-primary font-semibold"
-                              : "border-border hover:border-primary/50"
-                          }`}
-                        >
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground pt-1">
-                      Subject to availability — we&apos;ll confirm via WhatsApp
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-8 text-center">
-                  <Button
-                    type="button"
-                    onClick={() => setStep(3)}
-                    disabled={!selectedDate || !selectedTimeSlot}
-                    size="lg"
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-12"
-                  >
-                    Next: Your Details
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* ── Step 3: Details ── */}
-            {step === 3 && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Back
-                </button>
-
-                <h2 className="text-2xl font-display font-bold mb-1 text-center">
-                  Your Details
-                </h2>
-                {selectedService && selectedDate && (
-                  <p className="text-center text-sm text-muted-foreground mb-8">
-                    {selectedService.name} &middot; {format(selectedDate, "d MMM yyyy")} &middot; {selectedTimeSlot}
-                  </p>
                 )}
-
-                <Card className="bg-card border-border max-w-lg mx-auto">
-                  <CardContent className="p-6">
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                      <div className="space-y-2">
-                        <label htmlFor="name" className="text-sm font-semibold text-foreground">
-                          Full Name *
-                        </label>
-                        <Input
-                          id="name"
-                          type="text"
-                          placeholder="John Doe"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          className="bg-background border-border"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label htmlFor="phone" className="text-sm font-semibold text-foreground">
-                          WhatsApp Number *
-                        </label>
-                        <Input
-                          id="phone"
-                          type="tel"
-                          placeholder="+91 98914 30920"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          className="bg-background border-border"
-                          required
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          We&apos;ll send your booking confirmation to this number
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label htmlFor="notes" className="text-sm font-semibold text-foreground">
-                          Notes (Optional)
-                        </label>
-                        <Textarea
-                          id="notes"
-                          placeholder="Any health concerns, preferences, or questions…"
-                          value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
-                          className="bg-background border-border min-h-[80px]"
-                        />
-                      </div>
-
-                      <Button
-                        type="submit"
-                        size="lg"
-                        className="w-full bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold"
-                        disabled={!name.trim() || phone.trim().length < 6}
-                      >
-                        Book Now via WhatsApp
-                      </Button>
-                      <p className="text-xs text-muted-foreground text-center">
-                        WhatsApp opens with your booking details pre-filled — just hit send.
-                      </p>
-                    </form>
-                  </CardContent>
-                </Card>
               </div>
             )}
 
-            {/* ── Success ── */}
-            {step === "success" && (
-              <Card className="bg-card border-border max-w-lg mx-auto">
-                <CardContent className="py-16 text-center space-y-4">
-                  <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
-                  <h2 className="text-2xl font-display font-bold">Booking request sent!</h2>
-                  <p className="text-muted-foreground">
-                    We&apos;ll confirm your slot on WhatsApp shortly.
-                  </p>
-                  <Button
-                    type="button"
-                    onClick={handleBookAnother}
-                    variant="outline"
-                    className="mt-2"
-                  >
-                    Book Another Session
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </section>
+            {/* ══ Event Tab ══ */}
+            {activeTab === "event" && (
+              <div>
+                {eventSuccess ? (
+                  <Card className="bg-card border-border max-w-lg mx-auto">
+                    <CardContent className="py-16 text-center space-y-4">
+                      <CheckCircle className="w-16 h-16 text-green-500 mx-auto" />
+                      <h2 className="text-2xl font-display font-bold">Request sent!</h2>
+                      <p className="text-muted-foreground">
+                        We&apos;ll be in touch shortly to confirm your event booking.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setEventSuccess(false)}
+                        className="mt-2"
+                      >
+                        Submit Another Request
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="bg-card border-border">
+                    <CardContent className="p-8">
+                      <h2 className="text-2xl font-display font-bold mb-6">Mobile Event Details</h2>
+                      <form onSubmit={handleEventSubmit} className="space-y-5">
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label htmlFor="eventName" className="text-sm font-semibold text-foreground">
+                              Event Name *
+                            </label>
+                            <Input
+                              id="eventName"
+                              type="text"
+                              placeholder="Delhi Marathon 2025"
+                              value={eventName}
+                              onChange={(e) => setEventName(e.target.value)}
+                              className="bg-background border-border"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor="eventType" className="text-sm font-semibold text-foreground">
+                              Event Type *
+                            </label>
+                            <select
+                              id="eventType"
+                              value={eventType}
+                              onChange={(e) => setEventType(e.target.value)}
+                              className="w-full h-10 px-3 py-2 text-sm bg-background border border-input rounded-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                              required
+                            >
+                              <option value="" disabled>Select type…</option>
+                              {EVENT_TYPES.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
 
-        {/* Location */}
-        <section className="py-16 bg-card">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-            <Card className="bg-background border-border">
-              <CardContent className="p-8">
-                <div className="flex items-start space-x-4">
-                  <div className="bg-primary/10 w-12 h-12 rounded-sm flex items-center justify-center flex-shrink-0">
-                    <MapPin className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-display font-bold mb-2">Visit Our Facility</h3>
-                    <p className="text-muted-foreground mb-4">
-                      B-94, Sector 36, Greater Noida, Uttar Pradesh
-                      <br />
-                      Mobile: 9891430920 &nbsp;·&nbsp; Email: info@cryorevive.in
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <a
-                        href="tel:+919891430920"
-                        className="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-sm transition-colors"
-                      >
-                        Call: +91 9891430920
-                      </a>
-                      <a
-                        href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent("Hi CryoRevive! I'd like to know more about your recovery services.")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center px-6 py-3 bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold rounded-sm transition-colors"
-                      >
-                        WhatsApp Us
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label htmlFor="eventDate" className="text-sm font-semibold text-foreground">
+                              Event Date *
+                            </label>
+                            <Input
+                              id="eventDate"
+                              type="date"
+                              value={eventDate}
+                              onChange={(e) => setEventDate(e.target.value)}
+                              min={new Date().toISOString().split("T")[0]}
+                              className="bg-background border-border"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor="eventTimeSlot" className="text-sm font-semibold text-foreground">
+                              Preferred Time *
+                            </label>
+                            <Input
+                              id="eventTimeSlot"
+                              type="text"
+                              placeholder="e.g. 6:00 AM – 10:00 AM"
+                              value={eventTimeSlot}
+                              onChange={(e) => setEventTimeSlot(e.target.value)}
+                              className="bg-background border-border"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label htmlFor="athletes" className="text-sm font-semibold text-foreground">
+                              Expected Athletes *
+                            </label>
+                            <Input
+                              id="athletes"
+                              type="text"
+                              placeholder="e.g. 50–100"
+                              value={athletes}
+                              onChange={(e) => setAthletes(e.target.value)}
+                              className="bg-background border-border"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label htmlFor="location" className="text-sm font-semibold text-foreground">
+                              Event Location *
+                            </label>
+                            <Input
+                              id="location"
+                              type="text"
+                              placeholder="Venue name, city"
+                              value={location}
+                              onChange={(e) => setLocation(e.target.value)}
+                              className="bg-background border-border"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div className="border-t border-border pt-5">
+                          <p className="text-sm font-semibold mb-4">Organizer Details</p>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <label htmlFor="organizerName" className="text-sm font-semibold text-foreground">
+                                Full Name *
+                              </label>
+                              <Input
+                                id="organizerName"
+                                type="text"
+                                placeholder="Your name"
+                                value={organizerName}
+                                onChange={(e) => setOrganizerName(e.target.value)}
+                                className="bg-background border-border"
+                                required
+                              />
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <label htmlFor="eventPhone" className="text-sm font-semibold text-foreground">
+                                  WhatsApp Number *
+                                </label>
+                                <Input
+                                  id="eventPhone"
+                                  type="tel"
+                                  placeholder="+91 98914 30920"
+                                  value={eventPhone}
+                                  onChange={(e) => setEventPhone(e.target.value)}
+                                  className="bg-background border-border"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label htmlFor="email" className="text-sm font-semibold text-foreground">
+                                  Email (Optional)
+                                </label>
+                                <Input
+                                  id="email"
+                                  type="email"
+                                  placeholder="you@example.com"
+                                  value={email}
+                                  onChange={(e) => setEmail(e.target.value)}
+                                  className="bg-background border-border"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor="requirements" className="text-sm font-semibold text-foreground">
+                            Special Requirements (Optional)
+                          </label>
+                          <Textarea
+                            id="requirements"
+                            placeholder="Power supply, space constraints, specific equipment…"
+                            value={requirements}
+                            onChange={(e) => setRequirements(e.target.value)}
+                            className="bg-background border-border min-h-[80px]"
+                          />
+                        </div>
+
+                        <Button
+                          type="submit"
+                          size="lg"
+                          className="w-full bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold"
+                          disabled={
+                            !eventName.trim() || !eventType || !eventDate ||
+                            !eventTimeSlot.trim() || !athletes.trim() || !location.trim() ||
+                            !organizerName.trim() || eventPhone.trim().length < 6
+                          }
+                        >
+                          Send Booking Request via WhatsApp
+                        </Button>
+                        <p className="text-xs text-muted-foreground text-center">
+                          WhatsApp opens with your event details pre-filled — just hit send.
+                        </p>
+                      </form>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+
           </div>
         </section>
       </main>

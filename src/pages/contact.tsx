@@ -250,7 +250,7 @@ export default function Contact() {
                         <p className="text-sm text-muted-foreground mb-4">
                           Book our Mobile Recovery Unit for your marathon, sports day, or team training camp.
                         </p>
-                        <Link href="/book-event">
+                        <Link href="/booking?tab=event">
                           <button className="inline-flex items-center justify-center px-5 py-2.5 bg-accent hover:bg-accent/90 text-background text-sm font-semibold rounded-sm transition-colors">
                             Book Mobile Event
                           </button>

@@ -191,7 +191,7 @@ export default function Services() {
                         Book {service.title}
                       </Button>
                     ) : (
-                      <Link href="/book-event">
+                      <Link href="/booking?tab=event">
                         <Button
                           size="lg"
                           className="bg-accent hover:bg-accent/90 text-background font-semibold mt-6"
