@@ -28,7 +28,7 @@ export default function Services() {
         "Boosts circulation and immune function",
         "Enhances mental clarity and focus"
       ],
-      image: "/can-you-take-a-hot-shower-after-a-cold-plunge-510868.webp"
+      image: "/Ice%20Bath%20Therapy.png"
     },
     {
       icon: Droplets,
@@ -47,7 +47,7 @@ export default function Services() {
         "Enhanced cardiovascular conditioning",
         "Stress reduction and mental relaxation"
       ],
-      image: "/infrared_sauna_vs_traditional_sauna-1024x768.webp"
+      image: "/Steam%20Sauna.png"
     },
     {
       icon: Repeat,
