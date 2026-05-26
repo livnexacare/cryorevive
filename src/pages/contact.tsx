@@ -76,7 +76,7 @@ export default function Contact() {
                   </Card>
                 ) : (
                   <Card className="bg-card border-border">
-                    <CardContent className="p-8">
+                    <CardContent className="p-4 sm:p-8">
                       <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="grid md:grid-cols-2 gap-4">
                           <div className="space-y-2">

@@ -14,7 +14,7 @@ interface Announcement {
 }
 
 const TYPE_STYLES: Record<string, string> = {
-  offer: "bg-amber-900/80 border-amber-500/30 text-amber-100",
+  offer: "announcement-offer border-amber-500/30 text-white",
   feature: "bg-cyan-900/80 border-cyan-500/30 text-cyan-100",
   event: "bg-purple-900/80 border-purple-500/30 text-purple-100",
   general: "bg-slate-800/90 border-slate-600/30 text-slate-200",

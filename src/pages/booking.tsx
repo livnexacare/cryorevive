@@ -510,7 +510,7 @@ Please contact me to confirm. Thank you!`.trim();
                   </Card>
                 ) : (
                   <Card className="bg-card border-border">
-                    <CardContent className="p-8">
+                    <CardContent className="p-4 sm:p-8">
                       <h2 className="text-2xl font-display font-bold mb-6">Mobile Event Details</h2>
                       <form onSubmit={handleEventSubmit} className="space-y-5">
                         <div className="grid sm:grid-cols-2 gap-4">
