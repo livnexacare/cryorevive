@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_pool, close_pool
-from routers import bookings, contact, blog, payments, uploads
+from routers import bookings, contact, blog, payments, uploads, notifications
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,12 +17,16 @@ logging.basicConfig(
 
 app = FastAPI(title="CryoRevive API", version="1.0.0")
 
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
-origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").split(",")
+allowed_origins = [o.strip() for o in allowed_origins_env if o.strip()]
+
+# Allow all cryorevive-*.vercel.app preview deployments automatically
+allowed_origin_regex = r"https://cryorevive-.*\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=allowed_origins,
+    allow_origin_regex=allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,6 +37,7 @@ app.include_router(contact.router)
 app.include_router(blog.router)
 app.include_router(payments.router)
 app.include_router(uploads.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")
