@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_pool, close_pool
-from routers import bookings, contact, blog, payments, uploads
+from routers import bookings, contact, blog, payments, uploads, notifications
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +33,7 @@ app.include_router(contact.router)
 app.include_router(blog.router)
 app.include_router(payments.router)
 app.include_router(uploads.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")
