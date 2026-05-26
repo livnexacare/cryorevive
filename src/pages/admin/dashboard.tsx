@@ -336,7 +336,7 @@ export default function AdminDashboard() {
               <CardHeader><CardTitle>Bookings</CardTitle></CardHeader>
               <CardContent>
                 <div className="flex flex-col sm:flex-row gap-3 mb-6 flex-wrap">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {STATUS_FILTERS.map((s) => (
                       <Button
                         key={s}
@@ -416,11 +416,17 @@ export default function AdminDashboard() {
                                   {b.status === "pending" && (
                                     <Button
                                       size="sm"
-                                      className="bg-green-600 hover:bg-green-700 text-white"
+                                      className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5"
                                       disabled={actionLoading !== null}
                                       onClick={() => updateStatus(b.id, "confirmed")}
                                     >
-                                      {actionLoading === b.id + "confirmed" ? "..." : "Confirm"}
+                                      {actionLoading === b.id + "confirmed" && (
+                                        <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                        </svg>
+                                      )}
+                                      {actionLoading === b.id + "confirmed" ? "Confirming..." : "Confirm"}
                                     </Button>
                                   )}
                                   {(b.status === "pending" || b.status === "confirmed") && (
@@ -429,8 +435,15 @@ export default function AdminDashboard() {
                                       variant="destructive"
                                       disabled={actionLoading !== null}
                                       onClick={() => updateStatus(b.id, "cancelled")}
+                                      className="flex items-center gap-1.5"
                                     >
-                                      {actionLoading === b.id + "cancelled" ? "..." : "Cancel"}
+                                      {actionLoading === b.id + "cancelled" && (
+                                        <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                        </svg>
+                                      )}
+                                      {actionLoading === b.id + "cancelled" ? "Cancelling..." : "Cancel"}
                                     </Button>
                                   )}
                                 </div>
@@ -504,7 +517,13 @@ export default function AdminDashboard() {
                       <p className="text-sm font-medium text-destructive">{postError}</p>
                     )}
 
-                    <Button type="submit" disabled={postLoading}>
+                    <Button type="submit" disabled={postLoading} className="flex items-center gap-2">
+                      {postLoading && (
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                      )}
                       {postLoading ? "Posting..." : "Post Announcement"}
                     </Button>
                   </form>
@@ -554,8 +573,16 @@ export default function AdminDashboard() {
                               variant="outline"
                               disabled={sendLoading === a.id}
                               onClick={() => sendPush(a.id)}
+                              className="flex items-center gap-1.5"
                             >
-                              <Bell className="w-3.5 h-3.5 mr-1.5" />
+                              {sendLoading === a.id ? (
+                                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                </svg>
+                              ) : (
+                                <Bell className="w-3.5 h-3.5" />
+                              )}
                               {sendLoading === a.id ? "Sending..." : "Send Push Notification"}
                             </Button>
                             <Button
