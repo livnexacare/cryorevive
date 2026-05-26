@@ -83,7 +83,7 @@ export function Hero() {
             <div className="absolute inset-0 grid grid-cols-2">
               <div className="relative">
                 <Image
-                  src="/Ice-Baths-Sydney-1.jpg"
+                  src="/Ice Bath Therapy.png"
                   alt="Ice Bath Therapy Chamber"
                   fill
                   sizes="25vw"
@@ -93,7 +93,7 @@ export function Hero() {
               </div>
               <div className="relative">
                 <Image
-                  src="/hgmag-architecture_sauna-in-bathroom_4x3.jpg"
+                  src="/Steam Sauna.png"
                   alt="Steam Sauna Interior"
                   fill
                   sizes="25vw"

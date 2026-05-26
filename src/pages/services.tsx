@@ -28,7 +28,7 @@ export default function Services() {
         "Boosts circulation and immune function",
         "Enhances mental clarity and focus"
       ],
-      image: "/Ice%20Bath%20Therapy.png"
+      image: "/Ice Bath Therapy.png"
     },
     {
       icon: Droplets,
@@ -47,7 +47,7 @@ export default function Services() {
         "Enhanced cardiovascular conditioning",
         "Stress reduction and mental relaxation"
       ],
-      image: "/Steam%20Sauna.png"
+      image: "/Steam Sauna.png"
     },
     {
       icon: Repeat,
@@ -66,7 +66,7 @@ export default function Services() {
         "Accelerates metabolic waste removal",
         "Elite-level recovery optimization"
       ],
-      image: "/Contrast%20Therapy.png"
+      image: "/Contrast Therapy.png"
     },
     {
       icon: Truck,
