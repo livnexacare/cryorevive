@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import NotificationButton from "@/components/NotificationButton";
 
 export function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -43,6 +44,7 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
+            <NotificationButton />
             <Link href="/booking">
               <Button variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
                 Book Now
