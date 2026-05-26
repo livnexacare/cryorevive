@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
@@ -17,64 +17,71 @@ export default function NotificationButton() {
   const [permState, setPermState] = useState<PermState>("default");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
-      setPermState("unsupported");
-      return;
-    }
-    setPermState(Notification.permission as PermState);
-  }, []);
-
-  const subscribe = async () => {
+  const subscribe = useCallback(async () => {
     if (!VAPID_PUBLIC_KEY) return;
     setLoading(true);
     try {
       const reg = await navigator.serviceWorker.ready;
       const existing = await reg.pushManager.getSubscription();
-      const sub = existing ?? await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-
+      const sub =
+        existing ??
+        (await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        }));
       await fetch(`${API_URL}/api/notifications/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sub.toJSON()),
       });
-
-      setPermState("granted");
-    } catch {
-      setPermState(Notification.permission as PermState);
+    } catch (err) {
+      console.error("Push subscribe failed:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      setPermState("unsupported");
+      return;
+    }
+    const perm = Notification.permission as PermState;
+    setPermState(perm);
+
+    if (perm === "granted") {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.pushManager.getSubscription())
+        .then((sub) => { if (!sub) subscribe(); })
+        .catch(() => {});
+    }
+  }, [subscribe]);
 
   const handleClick = async () => {
     if (permState === "granted" || permState === "denied" || permState === "unsupported") return;
     const result = await Notification.requestPermission();
+    // Update icon immediately — before subscribe() resolves
+    setPermState(result as PermState);
     if (result === "granted") {
       await subscribe();
-    } else {
-      setPermState(result as PermState);
     }
   };
 
   if (permState === "unsupported") return null;
 
-  const label =
+  const title =
     permState === "granted"
-      ? "Notifications on"
+      ? "✅ Notifications enabled"
       : permState === "denied"
-      ? "Notifications blocked"
-      : "Enable notifications";
+      ? "🚫 Notifications blocked — check browser settings"
+      : "🔔 Enable notifications for offers and updates";
 
   return (
     <button
       onClick={handleClick}
       disabled={loading || permState === "denied" || permState === "granted"}
-      title={label}
-      aria-label={label}
+      title={title}
+      aria-label={title}
       className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
     >
       {permState === "granted" ? (
