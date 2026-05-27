@@ -181,24 +181,24 @@ Please contact me to confirm. Thank you!`.trim();
       <Navigation />
       <main className="min-h-screen bg-background">
         {/* Hero */}
-        <section className="py-16 bg-card">
+        <section className="py-8 md:py-16 bg-card">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <div className="inline-block px-4 py-2 bg-primary/10 border border-primary/30 rounded-sm mb-6">
-              <p className="text-sm font-semibold text-primary uppercase tracking-wider">
+            <div className="inline-block px-3 py-1.5 md:px-4 md:py-2 bg-primary/10 border border-primary/30 rounded-sm mb-4 md:mb-6">
+              <p className="text-xs md:text-sm font-semibold text-primary uppercase tracking-wider">
                 Book Your Recovery
               </p>
             </div>
-            <h1 className="text-4xl sm:text-5xl font-display font-bold mb-4">
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-display font-bold mb-3 md:mb-4">
               Start Your Recovery Journey
             </h1>
-            <p className="text-lg text-muted-foreground">
+            <p className="text-sm md:text-lg text-muted-foreground">
               Pick a service, choose a slot, and confirm via WhatsApp.
             </p>
           </div>
         </section>
 
         {/* Tabs + content */}
-        <section className="py-16 bg-background">
+        <section className="py-6 md:py-16 bg-background">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
 
             {/* Tab toggle */}
@@ -231,7 +231,7 @@ Please contact me to confirm. Thank you!`.trim();
             {activeTab === "incentre" && (
               <div>
                 {step !== "success" && (
-                  <div className="flex items-center justify-center mb-12">
+                  <div className="flex items-center justify-center mb-8 md:mb-12">
                     {STEP_LABELS.map((label, i) => {
                       const num = i + 1;
                       const done = currentStepNum > num;
@@ -240,7 +240,7 @@ Please contact me to confirm. Thank you!`.trim();
                         <div key={num} className="flex items-center">
                           <div className="flex flex-col items-center">
                             <div
-                              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                              className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
                                 done
                                   ? "bg-primary text-primary-foreground"
                                   : active
@@ -260,7 +260,7 @@ Please contact me to confirm. Thank you!`.trim();
                           </div>
                           {i < STEP_LABELS.length - 1 && (
                             <div
-                              className={`h-0.5 w-16 sm:w-24 mx-2 mb-5 transition-colors ${
+                              className={`h-0.5 w-8 sm:w-16 md:w-24 mx-2 mb-5 transition-colors ${
                                 done ? "bg-primary" : "bg-muted"
                               }`}
                             />
@@ -274,10 +274,10 @@ Please contact me to confirm. Thank you!`.trim();
                 {/* Step 1: Service */}
                 {step === 1 && (
                   <div>
-                    <h2 className="text-2xl font-display font-bold mb-8 text-center">
+                    <h2 className="text-xl md:text-2xl font-display font-bold mb-5 md:mb-8 text-center">
                       Choose Your Service
                     </h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
                       {SERVICES.map((service) => {
                         const Icon = SERVICE_ICONS[service.serviceType] ?? Snowflake;
                         return (
@@ -285,12 +285,12 @@ Please contact me to confirm. Thank you!`.trim();
                             key={service.id}
                             type="button"
                             onClick={() => handleServiceSelect(service)}
-                            className="p-5 border-2 border-border hover:border-primary rounded-sm transition-all text-center group cursor-pointer"
+                            className="p-4 border-2 border-border hover:border-primary rounded-2xl transition-all text-center group cursor-pointer"
                           >
-                            <Icon className="h-9 w-9 mx-auto mb-3 text-muted-foreground group-hover:text-primary transition-colors" />
+                            <Icon className="h-8 w-8 mx-auto mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
                             <h3 className="font-display font-bold text-sm mb-1">{service.name}</h3>
-                            <p className="text-xs text-muted-foreground mb-2">{service.duration}</p>
-                            <p className="text-xs text-muted-foreground leading-relaxed">
+                            <p className="text-xs text-muted-foreground mb-1">{service.duration}</p>
+                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                               {service.description}
                             </p>
                           </button>
@@ -347,7 +347,7 @@ Please contact me to confirm. Thank you!`.trim();
                               type="button"
                               disabled={!selectedDate}
                               onClick={() => setSelectedTimeSlot(slot)}
-                              className={`py-2 px-2 text-sm rounded-sm border-2 transition-all disabled:opacity-35 disabled:cursor-not-allowed ${
+                              className={`py-2.5 px-2 text-sm rounded-xl border-2 transition-all disabled:opacity-35 disabled:cursor-not-allowed ${
                                 selectedTimeSlot === slot
                                   ? "border-primary bg-primary/10 text-primary font-semibold"
                                   : "border-border hover:border-primary/50"
@@ -363,13 +363,13 @@ Please contact me to confirm. Thank you!`.trim();
                       </div>
                     </div>
 
-                    <div className="mt-8 text-center">
+                    <div className="mt-6 md:mt-8">
                       <Button
                         type="button"
                         onClick={() => setStep(3)}
                         disabled={!selectedDate || !selectedTimeSlot}
                         size="lg"
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-12"
+                        className="w-full md:w-auto md:px-12 py-3 text-sm rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
                       >
                         Next: Your Details
                       </Button>
