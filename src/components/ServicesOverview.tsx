@@ -40,18 +40,18 @@ export function ServicesOverview() {
   ];
 
   return (
-    <section className="py-20 bg-background">
+    <section className="py-12 md:py-20 bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-3xl mx-auto mb-16">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-display font-bold mb-4">
+        <div className="text-center max-w-3xl mx-auto mb-6 md:mb-16">
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-display font-bold mb-3 md:mb-4">
             Recovery Solutions
           </h2>
-          <p className="text-lg text-muted-foreground">
+          <p className="text-sm md:text-lg text-muted-foreground">
             Choose from our range of science-backed recovery therapies designed for peak performance.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 md:gap-6">
           {services.map((service, index) => {
             const Icon = service.icon;
             return (
@@ -59,16 +59,16 @@ export function ServicesOverview() {
                 key={index}
                 className="bg-card border-border hover:border-primary/50 transition-all duration-300 group"
               >
-                <CardContent className="p-6 space-y-4">
-                  <div className={`${service.bgColor} w-12 h-12 rounded-sm flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                    <Icon className={`h-6 w-6 ${service.color}`} />
+                <CardContent className="p-4 md:p-6 space-y-3 md:space-y-4">
+                  <div className={`${service.bgColor} w-8 h-8 md:w-12 md:h-12 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                    <Icon className={`h-4 w-4 md:h-6 md:w-6 ${service.color}`} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-display font-bold mb-2">{service.title}</h3>
-                    <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
+                    <h3 className="text-sm md:text-xl font-display font-bold mb-1 md:mb-2">{service.title}</h3>
+                    <p className="text-xs md:text-sm text-muted-foreground mb-2 md:mb-3 leading-relaxed line-clamp-2">
                       {service.description}
                     </p>
-                    <div className="inline-block px-3 py-1 bg-muted rounded-sm">
+                    <div className="inline-block px-2 py-0.5 md:px-3 md:py-1 bg-muted rounded-sm">
                       <p className="text-xs font-semibold text-foreground">{service.duration}</p>
                     </div>
                   </div>
