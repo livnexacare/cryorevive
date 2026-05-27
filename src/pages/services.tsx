@@ -134,9 +134,9 @@ export default function Services() {
                         alt={service.title}
                         fill
                         sizes="(max-width: 1024px) 100vw, 50vw"
+                        quality={95}
                         className="object-cover"
                       />
-                      <div className={`absolute inset-0 ${service.color === 'text-primary' ? 'bg-primary/20' : 'bg-accent/20'}`}></div>
                     </div>
 
                     <div className={`space-y-4 md:space-y-6 ${isEven ? 'order-2' : 'order-2 lg:order-1'}`}>

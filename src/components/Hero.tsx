@@ -87,9 +87,9 @@ export function Hero() {
                   alt="Ice Bath Therapy Chamber"
                   fill
                   sizes="25vw"
+                  quality={95}
                   className="object-cover"
                 />
-                <div className="absolute inset-0 bg-primary/20"></div>
               </div>
               <div className="relative">
                 <Image
@@ -97,9 +97,9 @@ export function Hero() {
                   alt="Steam Sauna Interior"
                   fill
                   sizes="25vw"
+                  quality={95}
                   className="object-cover"
                 />
-                <div className="absolute inset-0 bg-accent/20"></div>
               </div>
             </div>
           </div>

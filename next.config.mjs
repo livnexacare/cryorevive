@@ -29,6 +29,8 @@ const withPWAConfig = withPWA({
 const nextConfig = {
   reactStrictMode: true,
   images: {
+    formats: ["image/webp", "image/avif"],
+    minimumCacheTTL: 60,
     remotePatterns: [
       {
         protocol: "https",
