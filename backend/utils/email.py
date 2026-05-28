@@ -4,8 +4,7 @@ import resend
 
 resend.api_key = os.getenv("RESEND_API_KEY", "")
 
-# Hardcoded — works on Resend free/trial without domain verification
-SENDER = "CryoRevive <onboarding@resend.dev>"
+SENDER = os.getenv("EMAIL_FROM", "CryoRevive <onboarding@resend.dev>")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
 
 SERVICE_LABELS = {
