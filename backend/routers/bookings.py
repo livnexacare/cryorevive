@@ -176,13 +176,14 @@ async def test_email(x_admin_key: str = Header(None, alias="X-Admin-Key")):
     if not admin_email:
         return {"status": "failed", "error": "ADMIN_EMAIL not set"}
 
+    sender = os.getenv("EMAIL_FROM", "CryoRevive <onboarding@resend.dev>")
     try:
         r = _resend.Emails.send({
-            "from": "CryoRevive <onboarding@resend.dev>",
+            "from": sender,
             "to": [admin_email],
             "subject": "CryoRevive — Email Test ✅",
-            "html": "<h2>Email is working!</h2><p>Resend is configured correctly.</p>",
+            "html": f"<h2>Email is working!</h2><p>Sent from: {sender}</p>",
         })
-        return {"status": "sent", "id": str(r)}
+        return {"status": "sent", "id": str(r), "from": sender}
     except Exception as e:
         return {"status": "failed", "error": str(e)}
