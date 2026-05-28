@@ -21,6 +21,10 @@ async def contact(payload: ContactIn):
         datetime.now(timezone.utc)
     )
     asyncio.create_task(
-        send_contact_notification(payload.name, str(payload.email), payload.message)
+        send_contact_notification({
+            "name": payload.name.strip(),
+            "email": str(payload.email),
+            "message": payload.message.strip(),
+        })
     )
     return {"message": "Thanks for reaching out! We'll get back to you within 24 hours."}
