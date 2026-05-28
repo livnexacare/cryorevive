@@ -160,3 +160,29 @@ async def update_booking_status(
         asyncio.create_task(send_booking_confirmed(updated))
 
     return updated
+
+
+@router.post("/test-email")
+async def test_email(x_admin_key: str = Header(None, alias="X-Admin-Key")):
+    _require_admin(x_admin_key)
+
+    import resend as _resend
+    _resend.api_key = os.getenv("RESEND_API_KEY", "")
+
+    admin_email = os.getenv("ADMIN_EMAIL", "")
+
+    if not _resend.api_key:
+        return {"status": "failed", "error": "RESEND_API_KEY not set"}
+    if not admin_email:
+        return {"status": "failed", "error": "ADMIN_EMAIL not set"}
+
+    try:
+        r = _resend.Emails.send({
+            "from": "CryoRevive <onboarding@resend.dev>",
+            "to": [admin_email],
+            "subject": "CryoRevive — Email Test ✅",
+            "html": "<h2>Email is working!</h2><p>Resend is configured correctly.</p>",
+        })
+        return {"status": "sent", "id": str(r)}
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
