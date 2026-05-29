@@ -23,9 +23,10 @@ export default function Home() {
           <div className="relative w-full">
             <Image
               src="/cryo-branding-hero.png"
-              alt="CryoRevive — Contrast Therapy. Cold. Heat. Repeat. Perform."
+              alt="Contrast Therapy — Cold. Heat. Repeat. Perform."
               width={1920}
               height={1080}
+              quality={100}
               unoptimized
               priority
               className="w-full h-auto"

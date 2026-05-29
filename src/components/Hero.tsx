@@ -79,29 +79,18 @@ export function Hero() {
             </div>
           </div>
 
-          <div className="relative mt-6 lg:mt-0 aspect-video lg:aspect-auto lg:h-[600px] rounded-2xl overflow-hidden border border-primary/30">
-            <div className="absolute inset-0 grid grid-cols-2">
-              <div className="relative">
-                <Image
-                  src="/ice-bath-therapy.png"
-                  alt="Ice Bath Therapy Chamber"
-                  fill
-                  sizes="25vw"
-                  quality={95}
-                  className="object-cover"
-                />
-              </div>
-              <div className="relative">
-                <Image
-                  src="/steam-sauna.png"
-                  alt="Steam Sauna Interior"
-                  fill
-                  sizes="25vw"
-                  quality={95}
-                  className="object-cover"
-                />
-              </div>
-            </div>
+          <div className="relative mt-6 lg:mt-0 w-full overflow-hidden rounded-2xl border border-primary/30
+                         h-[320px] sm:h-[420px] md:h-[480px] lg:h-[540px] xl:h-[600px]">
+            <Image
+              src="/cryo-main-image.png"
+              alt="CryoRevive — Elite Recovery"
+              fill
+              priority
+              quality={100}
+              unoptimized
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover object-center"
+            />
           </div>
         </div>
       </div>
