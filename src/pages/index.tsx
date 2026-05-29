@@ -35,13 +35,12 @@ export default function Home({ prices = [] }: { prices: ServicePrice[] }) {
         <section className="w-full">
           <div className="relative w-full">
             <Image
-              src="/cryo-branding-hero.png"
+              src="/cryo-main-image.png"
               alt="Contrast Therapy — Cold. Heat. Repeat. Perform."
               width={1920}
               height={1080}
               quality={100}
               unoptimized
-              priority
               className="w-full h-auto"
             />
           </div>

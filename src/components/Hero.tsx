@@ -82,7 +82,7 @@ export function Hero() {
           <div className="relative mt-6 lg:mt-0 w-full overflow-hidden rounded-2xl border border-primary/30
                          h-[320px] sm:h-[420px] md:h-[480px] lg:h-[540px] xl:h-[600px]">
             <Image
-              src="/cryo-main-image.png"
+              src="/cryo-branding-hero.png"
               alt="CryoRevive — Elite Recovery"
               fill
               priority
