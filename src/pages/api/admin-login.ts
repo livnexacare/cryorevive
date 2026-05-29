@@ -12,8 +12,13 @@ export default function handler(req: NextApiRequest, res: NextApiResponse<Respon
   const adminPass = process.env.ADMIN_PASSWORD;
 
   if (!adminPass) {
-    return res.status(503).json({ error: "Admin credentials not configured" });
+    console.error("[ADMIN] ADMIN_PASSWORD not set in env vars");
+    return res.status(500).json({ error: "Server configuration error" });
   }
+
+  console.log(`[ADMIN] Login attempt for username: ${username}`);
+  console.log(`[ADMIN] Expected username: ${adminUser}`);
+  console.log(`[ADMIN] Password match: ${password === adminPass}`);
 
   if (username === adminUser && password === adminPass) {
     return res.status(200).json({ ok: true });
