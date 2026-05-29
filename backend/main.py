@@ -20,8 +20,8 @@ app = FastAPI(title="CryoRevive API", version="1.0.0")
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").split(",")
 allowed_origins = [o.strip() for o in allowed_origins_env if o.strip()]
 
-# Allow all cryorevive-*.vercel.app preview deployments automatically
-allowed_origin_regex = r"https://cryorevive-.*\.vercel\.app"
+# Allow production domains + all Vercel preview deployments
+allowed_origin_regex = r"https://(www\.)?cryorevive\.(in|com)|https://cryorevive-.*\.vercel\.app"
 
 app.add_middleware(
     CORSMiddleware,
