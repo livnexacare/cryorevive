@@ -6,8 +6,21 @@ import { Benefits } from "@/components/Benefits";
 import { ServicesOverview } from "@/components/ServicesOverview";
 import { TestimonialsPreview } from "@/components/TestimonialsPreview";
 import { SEO } from "@/components/SEO";
+import type { ServicePrice } from "@/lib/pricing";
 
-export default function Home() {
+export async function getServerSideProps() {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com"}/api/pricing/services`
+    );
+    const prices: ServicePrice[] = await res.json();
+    return { props: { prices: Array.isArray(prices) ? prices : [] } };
+  } catch {
+    return { props: { prices: [] } };
+  }
+}
+
+export default function Home({ prices = [] }: { prices: ServicePrice[] }) {
   return (
     <>
       <SEO
@@ -35,7 +48,7 @@ export default function Home() {
         </section>
 
         <Benefits />
-        <ServicesOverview />
+        <ServicesOverview prices={prices} />
         <TestimonialsPreview />
       </main>
       <Footer />

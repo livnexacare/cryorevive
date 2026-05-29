@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import { format } from "date-fns";
 import { Navigation } from "@/components/Navigation";
@@ -12,6 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Snowflake, Flame, Activity, Zap, CheckCircle, ChevronLeft } from "lucide-react";
 import { SERVICES } from "@/lib/services";
 import type { Service } from "@/lib/services";
+import type { ServicePrice } from "@/lib/pricing";
 
 const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "919891430920";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -45,8 +46,38 @@ type Step = 1 | 2 | 3 | "success";
 const today = new Date();
 today.setHours(0, 0, 0, 0);
 
-export default function Booking() {
+export async function getServerSideProps() {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com"}/api/pricing/services`
+    );
+    const prices: ServicePrice[] = await res.json();
+    return { props: { prices: Array.isArray(prices) ? prices : [] } };
+  } catch {
+    return { props: { prices: [] } };
+  }
+}
+
+export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
   const router = useRouter();
+
+  // Merge live prices with SERVICES (for description + fallback)
+  const services = useMemo<Service[]>(() => {
+    const active = prices.filter((p) => p.is_active);
+    if (active.length === 0) return SERVICES;
+    return active.map((p) => {
+      const fallback = SERVICES.find((s) => s.serviceType === p.service_type);
+      return {
+        id: p.service_type,
+        name: p.name,
+        duration: p.duration,
+        price: p.price,
+        priceDisplay: `₹${p.price.toLocaleString("en-IN")}`,
+        description: fallback?.description ?? "",
+        serviceType: p.service_type,
+      };
+    });
+  }, [prices]);
 
   const [activeTab, setActiveTab] = useState<Tab>("incentre");
 
@@ -78,14 +109,14 @@ export default function Booking() {
       setActiveTab("event");
     }
     if (typeof service === "string") {
-      const found = SERVICES.find((s) => s.serviceType === service);
+      const found = services.find((s) => s.serviceType === service);
       if (found) {
         setActiveTab("incentre");
         setSelectedService(found);
         setStep(2);
       }
     }
-  }, [router.query]);
+  }, [router.query, services]);
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
@@ -278,7 +309,7 @@ Please contact me to confirm. Thank you!`.trim();
                       Choose Your Service
                     </h2>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
-                      {SERVICES.map((service) => {
+                      {services.map((service) => {
                         const Icon = SERVICE_ICONS[service.serviceType] ?? Snowflake;
                         return (
                           <button
@@ -289,7 +320,8 @@ Please contact me to confirm. Thank you!`.trim();
                           >
                             <Icon className="h-8 w-8 mx-auto mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
                             <h3 className="font-display font-bold text-sm mb-1">{service.name}</h3>
-                            <p className="text-xs text-muted-foreground mb-1">{service.duration}</p>
+                            <p className="text-xs text-muted-foreground">{service.duration}</p>
+                            <p className="text-sm font-bold text-primary my-1">{service.priceDisplay}</p>
                             <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                               {service.description}
                             </p>

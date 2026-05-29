@@ -2,43 +2,52 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Snowflake, Droplets, Repeat, Truck } from "lucide-react";
+import type { ServicePrice } from "@/lib/pricing";
 
-export function ServicesOverview() {
-  const services = [
-    {
-      icon: Snowflake,
-      title: "Ice Bath Therapy",
-      description: "Precision-controlled cold plunge at -10°C to 4°C. Reduce inflammation and accelerate muscle recovery.",
-      duration: "3-15 min",
-      color: "text-primary",
-      bgColor: "bg-primary/10",
-    },
-    {
-      icon: Droplets,
-      title: "Steam Sauna",
-      description: "High-heat therapy at 60-90°C for deep muscle relaxation, detoxification, and improved circulation.",
-      duration: "15-20 min",
-      color: "text-accent",
-      bgColor: "bg-accent/10",
-    },
-    {
-      icon: Repeat,
-      title: "Contrast Therapy",
-      description: "Alternate hot and cold cycles to maximize recovery. Elite protocol used by professional athletes.",
-      duration: "30-45 min",
-      color: "text-primary",
-      bgColor: "bg-primary/10",
-    },
-    {
-      icon: Truck,
-      title: "Mobile Recovery",
-      description: "On-site services for gyms, events, and teams. Bring elite recovery technology to your location.",
-      duration: "Custom",
-      color: "text-accent",
-      bgColor: "bg-accent/10",
-    },
-  ];
+const STATIC_SERVICES = [
+  {
+    icon: Snowflake,
+    title: "Ice Bath Therapy",
+    description: "Precision-controlled cold plunge at -10°C to 4°C. Reduce inflammation and accelerate muscle recovery.",
+    duration: "3-15 min",
+    service_type: "ice_bath",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
+  },
+  {
+    icon: Droplets,
+    title: "Steam Sauna",
+    description: "High-heat therapy at 60-90°C for deep muscle relaxation, detoxification, and improved circulation.",
+    duration: "15-20 min",
+    service_type: "steam_sauna",
+    color: "text-accent",
+    bgColor: "bg-accent/10",
+  },
+  {
+    icon: Repeat,
+    title: "Contrast Therapy",
+    description: "Alternate hot and cold cycles to maximize recovery. Elite protocol used by professional athletes.",
+    duration: "30-45 min",
+    service_type: "contrast_therapy",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
+  },
+  {
+    icon: Truck,
+    title: "Mobile Recovery",
+    description: "On-site services for gyms, events, and teams. Bring elite recovery technology to your location.",
+    duration: "Custom",
+    service_type: "mobile_unit",
+    color: "text-accent",
+    bgColor: "bg-accent/10",
+  },
+];
 
+interface Props {
+  prices?: ServicePrice[];
+}
+
+export function ServicesOverview({ prices = [] }: Props) {
   return (
     <section className="py-12 md:py-20 bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -52,8 +61,9 @@ export function ServicesOverview() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 md:gap-6">
-          {services.map((service, index) => {
+          {STATIC_SERVICES.map((service, index) => {
             const Icon = service.icon;
+            const livePrice = prices.find((p) => p.service_type === service.service_type && p.is_active);
             return (
               <Card
                 key={index}
@@ -68,8 +78,17 @@ export function ServicesOverview() {
                     <p className="text-xs md:text-sm text-muted-foreground mb-2 md:mb-3 leading-relaxed line-clamp-2">
                       {service.description}
                     </p>
-                    <div className="inline-block px-2 py-0.5 md:px-3 md:py-1 bg-muted rounded-sm">
-                      <p className="text-xs font-semibold text-foreground">{service.duration}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="inline-block px-2 py-0.5 md:px-3 md:py-1 bg-muted rounded-sm">
+                        <p className="text-xs font-semibold text-foreground">
+                          {livePrice ? livePrice.duration : service.duration}
+                        </p>
+                      </div>
+                      {livePrice && (
+                        <p className="text-xs md:text-sm font-bold text-primary">
+                          ₹{livePrice.price.toLocaleString("en-IN")}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>
