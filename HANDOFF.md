@@ -107,7 +107,7 @@
 | Admin — Bookings | ✅ DONE | Full CRUD + status |
 | Admin — Announcements | ✅ DONE | Create, send push, deactivate |
 | Admin — Pricing | ✅ DONE | Service prices + event calculator |
-| Price changes live | 🔴 BROKEN | Admin saves to Supabase but frontend reads hardcoded services.ts |
+| Price changes live | ✅ DONE | /pricing + /booking + homepage all fetch from Supabase |
 | Email — Booking confirmation | ✅ DONE | booking@cryorevive.in (after domain verify) |
 | Email — Support auto-reply | ✅ DONE | support@cryorevive.in |
 | Email — Admin notification | ✅ DONE | admin@livnexacare.com |
@@ -224,7 +224,7 @@ Three tables — see `backend/schema.sql` for full DDL and `backend/supabase/mig
 | 2026-05-26 | Render 503 cold start | Backend hibernating | Added cron-job.org every 10 min keep-alive | ✅ Fixed |
 | 2026-05-30 | Hero image broken | cryo-main-image.png not committed to git | Committed image + fixed src path | ✅ Fixed |
 | 2026-05-30 | Admin login 401 | Credentials mismatch Vercel vs what user types | Fixed | ✅ Fixed |
-| 2026-05-30 | Price changes not live | Frontend reads hardcoded services.ts not Supabase | Fix in progress | 🔴 Active |
+| 2026-05-30 | Price changes not live | Frontend reads hardcoded services.ts not Supabase | Added getServerSideProps to /pricing, /booking, homepage | ✅ Fixed |
 
 ---
 
@@ -232,7 +232,7 @@ Three tables — see `backend/schema.sql` for full DDL and `backend/supabase/mig
 
 ### Urgent
 - [x] Fix admin login — 401 credentials mismatch ✅
-- [ ] Fix price changes not reflecting on live site (wire frontend to Supabase pricing table)
+- [x] Fix price changes not reflecting on live site ✅
 - [ ] Set VAPID keys → enable push notifications
 - [ ] Merge feature/pwa-notifications to main
 - [ ] Merge feature/mobile-polish to main
@@ -350,4 +350,4 @@ Mobile access: Type URL directly in browser, then add to home screen
 | Announcements CRUD | ✅ DONE | With push notification send |
 | Service pricing edit | ✅ DONE | Saves to Supabase |
 | Event pricing calculator | ✅ DONE | Base + per athlete + GST |
-| Price changes on site | 🔴 BROKEN | Frontend still reads hardcoded values |
+| Price changes on site | ✅ DONE | getServerSideProps on /pricing, /booking, homepage |
