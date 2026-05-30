@@ -103,7 +103,7 @@
 | Blog listing | ✅ DONE | Supabase |
 | Blog detail | ✅ DONE | Supabase |
 | Testimonials | 🟡 PARTIAL | Hardcoded |
-| Admin login | 🔴 BROKEN | 401 — credentials mismatch under investigation |
+| Admin login | ✅ DONE | Fixed 2026-05-30 |
 | Admin — Bookings | ✅ DONE | Full CRUD + status |
 | Admin — Announcements | ✅ DONE | Create, send push, deactivate |
 | Admin — Pricing | ✅ DONE | Service prices + event calculator |
@@ -223,7 +223,7 @@ Three tables — see `backend/schema.sql` for full DDL and `backend/supabase/mig
 | 2026-05-26 | Emails not sending | FROM address using unverified domain | Switched to onboarding@resend.dev fallback | ✅ Fixed |
 | 2026-05-26 | Render 503 cold start | Backend hibernating | Added cron-job.org every 10 min keep-alive | ✅ Fixed |
 | 2026-05-30 | Hero image broken | cryo-main-image.png not committed to git | Committed image + fixed src path | ✅ Fixed |
-| 2026-05-30 | Admin login 401 | Credentials mismatch Vercel vs what user types | Under investigation | 🔴 Active |
+| 2026-05-30 | Admin login 401 | Credentials mismatch Vercel vs what user types | Fixed | ✅ Fixed |
 | 2026-05-30 | Price changes not live | Frontend reads hardcoded services.ts not Supabase | Fix in progress | 🔴 Active |
 
 ---
@@ -231,7 +231,7 @@ Three tables — see `backend/schema.sql` for full DDL and `backend/supabase/mig
 ## Pending Tasks
 
 ### Urgent
-- [ ] Fix admin login — 401 credentials mismatch
+- [x] Fix admin login — 401 credentials mismatch ✅
 - [ ] Fix price changes not reflecting on live site (wire frontend to Supabase pricing table)
 - [ ] Set VAPID keys → enable push notifications
 - [ ] Merge feature/pwa-notifications to main
@@ -344,7 +344,7 @@ Mobile access: Type URL directly in browser, then add to home screen
 
 | Feature | Status | Notes |
 |---|---|---|
-| Login | 🔴 BROKEN | Investigating |
+| Login | ✅ DONE | Fixed 2026-05-30 |
 | Bookings list | ✅ DONE | Filter by status/date |
 | Confirm/Cancel booking | ✅ DONE | Updates Supabase |
 | Announcements CRUD | ✅ DONE | With push notification send |
