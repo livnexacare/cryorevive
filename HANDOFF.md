@@ -1,6 +1,6 @@
 # CryoRevive — Project Handoff Document
 
-**Last Updated:** 2026-05-21
+**Last Updated:** 2026-05-30
 **Repo:** https://github.com/livnexacare/cryorevive
 **Local Path:** `E:\SaasCode\CryoRevive\cryo-revive-main`
 
@@ -10,7 +10,7 @@
 
 | Service | URL | Status |
 |---|---|---|
-| Frontend (Vercel) | https://cryo-revive-main.vercel.app | LIVE |
+| Frontend (Vercel) | https://www.cryorevive.in | LIVE |
 | Backend (Render) | https://cryorevive.onrender.com | LIVE |
 | Backend Swagger | https://cryorevive.onrender.com/docs | LIVE |
 | Supabase Dashboard | https://supabase.com/dashboard/project/uucwftoqbjtljqaagjel | LIVE |
@@ -60,8 +60,8 @@
 | `SENDER_EMAIL` | From address for outgoing emails |
 | `ADMIN_EMAIL` | Admin notification recipient |
 | `ADMIN_API_KEY` | Secret key for admin-only API routes |
-| `FRONTEND_URL` | `https://cryo-revive-main.vercel.app` |
-| `ALLOWED_ORIGINS` | `https://cryo-revive-main.vercel.app` |
+| `FRONTEND_URL` | `https://www.cryorevive.in` |
+| `ALLOWED_ORIGINS` | `https://cryorevive.in,https://www.cryorevive.in,https://cryo-revive-main.vercel.app` |
 | `R2_ACCOUNT_ID` | Cloudflare R2 account ID |
 | `R2_ACCESS_KEY_ID` | Cloudflare R2 access key |
 | `R2_SECRET_KEY` | Cloudflare R2 secret key |
@@ -95,24 +95,47 @@
 
 | Feature | Status | Notes |
 |---|---|---|
-| Homepage | ✅ DONE | |
-| Services page | ✅ DONE | |
-| Pricing page | ✅ DONE | Prices hardcoded |
-| Booking form | ✅ DONE | Connected to POST /api/bookings |
-| Available slots | ✅ DONE | GET /api/slots — dynamic from DB |
-| Contact form | ✅ DONE | Connected to POST /api/contact |
-| Blog listing | ✅ DONE | GET /api/blog from Supabase |
-| Blog detail | ✅ DONE | GET /api/blog/{slug} |
-| Testimonials | 🟡 PARTIAL | Hardcoded — no DB connection yet |
-| Email confirmation | ✅ DONE | Via Resend (booking_id bug fixed) |
-| Image upload | ✅ DONE | Via Cloudflare R2 |
-| Admin login | ✅ DONE | Server-side env var auth |
-| Admin dashboard | 🟡 PARTIAL | UI works, needs GET /api/bookings wired |
-| User login | ❌ BROKEN | localStorage plaintext — needs Supabase Auth |
-| User signup | ❌ BROKEN | localStorage plaintext — needs Supabase Auth |
-| User account | ❌ BROKEN | Reads localStorage — needs backend |
-| Payment initiate | ⏳ PENDING | Awaiting Razorpay/Stripe KYC approval |
-| Payment webhook | ⏳ PENDING | Awaiting payment provider |
+| Homepage | ✅ DONE | cryo-branding-hero in hero, cryo-main-image in banner |
+| Services page | ✅ DONE | New service images added |
+| Booking — In-Centre | ✅ DONE | WhatsApp flow |
+| Booking — Mobile Event | ✅ DONE | Separate tab |
+| Contact form | ✅ DONE | WhatsApp + backend |
+| Blog listing | ✅ DONE | Supabase |
+| Blog detail | ✅ DONE | Supabase |
+| Testimonials | 🟡 PARTIAL | Hardcoded |
+| Admin login | 🔴 BROKEN | 401 — credentials mismatch under investigation |
+| Admin — Bookings | ✅ DONE | Full CRUD + status |
+| Admin — Announcements | ✅ DONE | Create, send push, deactivate |
+| Admin — Pricing | ✅ DONE | Service prices + event calculator |
+| Price changes live | 🔴 BROKEN | Admin saves to Supabase but frontend reads hardcoded services.ts |
+| Email — Booking confirmation | ✅ DONE | booking@cryorevive.in (after domain verify) |
+| Email — Support auto-reply | ✅ DONE | support@cryorevive.in |
+| Email — Admin notification | ✅ DONE | admin@livnexacare.com |
+| Image upload | ✅ DONE | Cloudflare R2 |
+| PWA install | ✅ DONE | Android + iOS prompt |
+| Auto-update notification | ✅ DONE | SW update toast |
+| Push notifications | 🟡 PARTIAL | VAPID keys pending |
+| Announcement popup | ✅ DONE | Center modal |
+| Floating WhatsApp button | ✅ DONE | All pages |
+| Mobile responsive | ✅ DONE | App-like feel |
+| Keep-alive cron | ✅ DONE | cron-job.org every 10 min → /health |
+| Supabase Auth | ✅ DONE | Email signup/login |
+| Google OAuth | ⏳ PENDING | Supabase config needed |
+| Payment integration | ⏳ PENDING | Razorpay KYC in progress |
+| Custom domain | ✅ DONE | cryorevive.in live on Vercel |
+| SEO meta tags | ⏳ PENDING | LIV-45 |
+
+---
+
+## Active Branches
+
+| Branch | Purpose | Status |
+|---|---|---|
+| main | Production | Live |
+| backup/payments-razorpay | Old main with Razorpay + Login + Pricing | Saved for later |
+| feature/pwa-notifications | PWA + push notifications | Pending merge |
+| feature/mobile-polish | Mobile UI improvements | Pending merge |
+| feature/ui-responsive | UI responsive fixes | Pending merge |
 
 ---
 
@@ -195,29 +218,42 @@ Three tables — see `backend/schema.sql` for full DDL and `backend/supabase/mig
 | 2026-05-21 | Render backend not starting | `$PORT` hardcoded in Dockerfile instead of using Render's dynamic port | Changed CMD to use `$PORT` env var | ✅ Fixed |
 | 2026-05-21 | Frontend not connected to backend | `NEXT_PUBLIC_API_URL` wrong URL + never referenced in code | Created `src/lib/api.ts`, wired all pages | ✅ Fixed |
 | 2026-05-21 | Razorpay modal opens with `key: undefined` | `NEXT_PUBLIC_RAZORPAY_KEY_ID` missing from Vercel env vars | Pending — add when KYC approved | ⏳ Pending |
+| 2026-05-26 | Admin login 401 | ALLOWED_ORIGINS missing cryorevive.in | Added to Render ALLOWED_ORIGINS + CORS regex | ✅ Fixed |
+| 2026-05-26 | CORS blocking cryorevive.in | www.cryorevive.in not in ALLOWED_ORIGINS | Added both cryorevive.in and www.cryorevive.in | ✅ Fixed |
+| 2026-05-26 | Emails not sending | FROM address using unverified domain | Switched to onboarding@resend.dev fallback | ✅ Fixed |
+| 2026-05-26 | Render 503 cold start | Backend hibernating | Added cron-job.org every 10 min keep-alive | ✅ Fixed |
+| 2026-05-30 | Hero image broken | cryo-main-image.png not committed to git | Committed image + fixed src path | ✅ Fixed |
+| 2026-05-30 | Admin login 401 | Credentials mismatch Vercel vs what user types | Under investigation | 🔴 Active |
+| 2026-05-30 | Price changes not live | Frontend reads hardcoded services.ts not Supabase | Fix in progress | 🔴 Active |
 
 ---
 
 ## Pending Tasks
 
+### Urgent
+- [ ] Fix admin login — 401 credentials mismatch
+- [ ] Fix price changes not reflecting on live site (wire frontend to Supabase pricing table)
+- [ ] Set VAPID keys → enable push notifications
+- [ ] Merge feature/pwa-notifications to main
+- [ ] Merge feature/mobile-polish to main
+
 ### High Priority
-- [ ] Add `NEXT_PUBLIC_API_URL=https://cryorevive.onrender.com` to Vercel env vars and redeploy
-- [ ] Complete payment provider KYC (Razorpay / Stripe) — applied, awaiting approval
-- [ ] Wire admin dashboard to GET /api/bookings (add endpoint to backend)
-- [ ] Add `PATCH /api/bookings/{id}/status` for admin status updates
-- [ ] Replace localStorage auth with Supabase Auth (LIV-44)
+- [ ] Verify cryorevive.in in Resend → enable booking@cryorevive.in sender
+- [ ] Add Razorpay keys when KYC approved
+- [ ] Enable Google OAuth in Supabase
+- [ ] Fix SEO defaults (LIV-45)
 
 ### Medium Priority
-- [ ] Connect custom domain (cryorevive.com) to Vercel
-- [ ] Wire testimonials page to Supabase
-- [ ] Fix SEO defaults — title/description in `SEO.tsx` (LIV-45)
-- [ ] Add Google Sign-in via Supabase Auth
+- [ ] Employee login feature (view today's bookings, mark arrived/no-show)
+- [ ] Wire testimonials to Supabase
+- [ ] Blog image upload UI in admin panel
+- [ ] Add sitemap.xml and robots.txt
+- [ ] Secret admin access gesture on mobile PWA (tap copyright 5x)
 
 ### Low Priority
-- [ ] Blog image upload UI in admin panel
-- [ ] Add analytics (Google Analytics / Plausible)
-- [ ] Sitemap.xml and robots.txt
+- [ ] Analytics (Google Analytics or Plausible)
 - [ ] Cookie consent banner
+- [ ] Customer login (low priority — WhatsApp handles communication)
 
 ---
 
@@ -247,5 +283,71 @@ cryo-revive-main/
 │   ├── Dockerfile          # python:3.11-slim, uses $PORT
 │   ├── render.yaml         # Render deployment config (Python runtime)
 │   └── requirements.txt
+├── .github/
+│   └── workflows/
+│       └── keep-alive.yml  # GitHub Actions backup keep-alive (every 14 min)
 └── HANDOFF.md              # This file
 ```
+
+---
+
+## 16. Keep-Alive Cron
+
+Service: cron-job.org (free)
+URL pinged: https://cryorevive.onrender.com/health
+Frequency: Every 10 minutes
+Purpose: Prevent Render free tier cold starts (50s delay)
+Status: ✅ Active
+
+Also: GitHub Actions workflow at `.github/workflows/keep-alive.yml`
+as backup (every 14 minutes via GitHub cron)
+
+---
+
+## 17. Email Configuration
+
+Provider: Resend (https://resend.com)
+Account: livnexacare account
+
+| Email Address | Purpose | Status |
+|---|---|---|
+| booking@cryorevive.in | Booking confirmations to customers | ⏳ Pending domain verify in Resend |
+| support@cryorevive.in | Support queries + auto-replies | ⏳ Pending domain verify in Resend |
+| admin@livnexacare.com | Admin notifications (receives all alerts) | ✅ Working |
+| onboarding@resend.dev | Fallback sender (no domain needed) | ✅ Working |
+
+To activate cryorevive.in senders:
+1. Go to https://resend.com/domains
+2. Add cryorevive.in
+3. Add DNS records at domain registrar
+4. Verify → green ✅
+5. Emails automatically send from branded addresses
+
+---
+
+## 18. Cron Jobs
+
+| Service | URL | Schedule | Purpose | Status |
+|---|---|---|---|---|
+| cron-job.org | /health | Every 10 min | Keep Render awake | ✅ Active |
+| GitHub Actions | /health | Every 14 min | Backup keep-alive | ✅ Active |
+
+Dashboard: https://console.cron-job.org
+GitHub: `.github/workflows/keep-alive.yml`
+
+---
+
+## 19. Admin Features
+
+Access: https://www.cryorevive.in/admin
+Mobile access: Type URL directly in browser, then add to home screen
+
+| Feature | Status | Notes |
+|---|---|---|
+| Login | 🔴 BROKEN | Investigating |
+| Bookings list | ✅ DONE | Filter by status/date |
+| Confirm/Cancel booking | ✅ DONE | Updates Supabase |
+| Announcements CRUD | ✅ DONE | With push notification send |
+| Service pricing edit | ✅ DONE | Saves to Supabase |
+| Event pricing calculator | ✅ DONE | Base + per athlete + GST |
+| Price changes on site | 🔴 BROKEN | Frontend still reads hardcoded values |
