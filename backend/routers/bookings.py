@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from database import db_execute, db_fetchrow, db_fetch, row_to_dict, rows_to_list
 from models.booking import BookingIn, BookingStatusUpdate
 from utils.email import send_booking_received, send_booking_confirmed
+from utils.whatsapp import send_whatsapp_notifications
 from utils.slots import get_available_slots
 
 router = APIRouter(prefix="/api", tags=["bookings"])
@@ -54,6 +55,7 @@ async def create_booking(payload: BookingIn):
 
     booking = row_to_dict(await db_fetchrow("SELECT * FROM bookings WHERE id = $1", booking_id))
     asyncio.create_task(send_booking_received(booking))
+    asyncio.create_task(send_whatsapp_notifications(booking))
     return {"id": booking_id, "message": "Booking received. We'll confirm your slot shortly."}
 
 
