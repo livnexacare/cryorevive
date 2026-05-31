@@ -14,7 +14,11 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
-      - key: SENDER_EMAIL
+      - key: BOOKING_EMAIL_FROM
+        sync: false
+      - key: SUPPORT_EMAIL_FROM
+        sync: false
+      - key: SUPPORT_DEST_EMAIL
         sync: false
       - key: ADMIN_EMAIL
         sync: false
