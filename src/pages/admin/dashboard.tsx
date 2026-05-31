@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle } from "lucide-react";
+import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -191,6 +191,14 @@ export default function AdminDashboard() {
     if (auth !== "true") { router.push("/admin"); return; }
     setIsAuthenticated(true);
   }, [router]);
+
+  // ── Auto-refresh bookings every 30s ────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(() => setTick(t => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
 
   // ── Fetch bookings ──────────────────────────────────────────────────────
 
@@ -537,7 +545,16 @@ cryorevive.in | +91 09891430920`;
           {/* ══ Bookings Tab ══ */}
           {activeTab === "bookings" && (
             <Card>
-              <CardHeader><CardTitle>Bookings</CardTitle></CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Bookings</CardTitle>
+                <button
+                  onClick={() => setTick(t => t + 1)}
+                  className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 hover:text-white transition-colors"
+                >
+                  <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                  Refresh
+                </button>
+              </CardHeader>
               <CardContent>
                 <div className="flex flex-col sm:flex-row gap-3 mb-6 flex-wrap">
                   <div className="flex gap-2 flex-wrap">

@@ -133,27 +133,43 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
     setStep(2);
   };
 
-  const handleInCentreSubmit = (e: React.FormEvent) => {
+  const handleInCentreSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedService || !selectedDate || !selectedTimeSlot) return;
 
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const dateFormatted = format(selectedDate, "EEEE, dd MMMM yyyy");
 
+    const bookingData = {
+      name,
+      email: `${phone.replace(/\s+/g, "")}@whatsapp.booking`,
+      phone,
+      service_type: selectedService.serviceType,
+      date: dateStr,
+      time_slot: selectedTimeSlot,
+      notes,
+    };
+
+    console.log("[BOOKING] Submitting:", bookingData);
+    console.log("[BOOKING] API URL:", API_URL);
+
     if (API_URL) {
-      fetch(`${API_URL}/api/bookings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          email: `${phone.replace(/\s+/g, "")}@whatsapp.booking`,
-          phone,
-          service_type: selectedService.serviceType,
-          date: dateStr,
-          time_slot: selectedTimeSlot,
-          notes,
-        }),
-      }).catch(() => {});
+      try {
+        const res = await fetch(`${API_URL}/api/bookings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bookingData),
+        });
+        const data = await res.json();
+        console.log("[BOOKING] Save response:", res.status, data);
+        if (!res.ok) {
+          console.error("[BOOKING] Save failed:", data);
+        } else {
+          console.log("[BOOKING] Saved successfully, id:", data.id);
+        }
+      } catch (err) {
+        console.error("[BOOKING] Network error:", err);
+      }
     }
 
     const message = `🧊 *New CryoRevive Booking Request*
