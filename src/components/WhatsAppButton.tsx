@@ -1,4 +1,4 @@
-const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "919891430920";
+const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "918595850920";
 const MESSAGE = encodeURIComponent("Hi! I want to know more about CryoRevive services.");
 
 export default function WhatsAppButton() {

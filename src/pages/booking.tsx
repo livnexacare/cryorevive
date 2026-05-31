@@ -14,7 +14,7 @@ import { SERVICES } from "@/lib/services";
 import type { Service } from "@/lib/services";
 import type { ServicePrice } from "@/lib/pricing";
 
-const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "919891430920";
+const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "918595850920";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const SERVICE_ICONS: Record<string, typeof Snowflake> = {

@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Phone, Mail, MapPin, MessageCircle, Clock, Users, CheckCircle, Truck } from "lucide-react";
 import Link from "next/link";
 
-const WA_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "919891430920";
+const WA_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "918595850920";
 
 export default function Contact() {
   const [success, setSuccess] = useState(false);
@@ -100,7 +100,7 @@ export default function Contact() {
                               id="phone"
                               name="phone"
                               type="tel"
-                              placeholder="9891430920"
+                              placeholder="8595850920"
                               className="bg-background border-border"
                             />
                           </div>
@@ -176,8 +176,8 @@ export default function Contact() {
                           </div>
                           <div>
                             <h3 className="font-display font-bold mb-1">Call / WhatsApp</h3>
-                            <a href="tel:+919891430920" className="text-sm text-primary hover:underline">
-                              +91 9891430920
+                            <a href="tel:+918595850920" className="text-sm text-primary hover:underline">
+                              +91 8595850920
                             </a>
                           </div>
                         </div>

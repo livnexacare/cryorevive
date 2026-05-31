@@ -11,7 +11,7 @@ import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, Dollar
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
-const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "919891430920";
+const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "918595850920";
 
 const SERVICE_LABELS: Record<string, string> = {
   ice_bath: "Ice Bath",
@@ -433,7 +433,7 @@ GST (${calcResult.gst_percent}%): ${fmt(calcResult.gst_amount)}
 TOTAL: ${fmt(calcResult.total)}
 Per Person: ${fmt(calcResult.per_person)}
 Valid for 7 days. Contact us to confirm.
-cryorevive.in | +91 09891430920`;
+cryorevive.in | +91 08595850920`;
   };
 
   const copyQuote = async () => {
