@@ -1,7 +1,7 @@
 import os
 import uuid
 import asyncio
-from datetime import date as Date, datetime, timezone
+from datetime import date as Date, datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -24,6 +24,12 @@ def _require_admin(x_admin_key: str) -> None:
 
 @router.post("/bookings", status_code=201)
 async def create_booking(payload: BookingIn):
+    today = Date.today()
+    if payload.date < today:
+        raise HTTPException(status_code=400, detail="Cannot book for a past date")
+    if payload.date > today + timedelta(days=90):
+        raise HTTPException(status_code=400, detail="Cannot book more than 90 days in advance")
+
     # Prevent double-booking the same slot
     conflict = await db_fetchrow(
         """SELECT id FROM bookings

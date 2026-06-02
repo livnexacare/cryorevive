@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
-import { format } from "date-fns";
+import { format, addDays, addHours, isBefore, isToday } from "date-fns";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
@@ -24,10 +24,26 @@ const SERVICE_ICONS: Record<string, typeof Snowflake> = {
   cryo_chamber: Zap,
 };
 
-const TIME_SLOTS = [
+const MASTER_SLOTS = [
   "9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM",
   "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM", "6:00 PM",
 ];
+
+function getAvailableTimeSlots(date: Date): string[] {
+  if (!isToday(date)) return MASTER_SLOTS;
+  const cutoff = addHours(new Date(), 2);
+  return MASTER_SLOTS.filter((slot) => {
+    const [time, period] = slot.split(" ");
+    const [h, m] = time.split(":");
+    let hour = parseInt(h, 10);
+    const min = parseInt(m, 10) || 0;
+    if (period === "PM" && hour !== 12) hour += 12;
+    if (period === "AM" && hour === 12) hour = 0;
+    const slotDate = new Date(date);
+    slotDate.setHours(hour, min, 0, 0);
+    return slotDate > cutoff;
+  });
+}
 
 const EVENT_TYPES = [
   "Marathon / Running Event",
@@ -45,6 +61,7 @@ type Step = 1 | 2 | 3 | "success";
 
 const today = new Date();
 today.setHours(0, 0, 0, 0);
+const maxDate = addDays(today, 30);
 
 export async function getServerSideProps() {
   try {
@@ -102,6 +119,10 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
   const [eventPhone, setEventPhone] = useState("+91 ");
   const [email, setEmail] = useState("");
   const [requirements, setRequirements] = useState("");
+  const [eventDateError, setEventDateError] = useState("");
+
+  const availableSlots = selectedDate ? getAvailableTimeSlots(selectedDate) : MASTER_SLOTS;
+  const minEventDateStr = format(addHours(new Date(), 48), "yyyy-MM-dd");
 
   useEffect(() => {
     const { service, tab } = router.query;
@@ -136,6 +157,10 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
   const handleInCentreSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedService || !selectedDate || !selectedTimeSlot) return;
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    if (isBefore(selectedDate, now)) return;
 
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const dateFormatted = format(selectedDate, "EEEE, dd MMMM yyyy");
@@ -198,6 +223,16 @@ Please confirm my booking. Thank you!`.trim();
 
   const handleEventSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (eventDate) {
+      const selected = new Date(eventDate + "T00:00:00");
+      const minDate = addHours(new Date(), 48);
+      if (isBefore(selected, minDate)) {
+        setEventDateError("Event bookings require at least 48 hours notice");
+        return;
+      }
+    }
+    setEventDateError("");
 
     const message = `🚐 *CryoRevive Mobile Event Booking*
 
@@ -375,8 +410,8 @@ Please contact me to confirm. Thank you!`.trim();
                           <Calendar
                             mode="single"
                             selected={selectedDate}
-                            onSelect={(d) => setSelectedDate(d)}
-                            disabled={(date) => date < today}
+                            onSelect={(d) => { setSelectedDate(d); setSelectedTimeSlot(""); }}
+                            disabled={(date) => isBefore(date, today) || date > maxDate}
                             initialFocus
                           />
                         </CardContent>
@@ -389,7 +424,7 @@ Please contact me to confirm. Thank you!`.trim();
                             : "Pick a date to see available times"}
                         </h3>
                         <div className="grid grid-cols-3 gap-2">
-                          {TIME_SLOTS.map((slot) => (
+                          {availableSlots.map((slot) => (
                             <button
                               key={slot}
                               type="button"
@@ -405,6 +440,11 @@ Please contact me to confirm. Thank you!`.trim();
                             </button>
                           ))}
                         </div>
+                        {selectedDate && isToday(selectedDate) && availableSlots.length === 0 && (
+                          <p className="text-amber-400 text-sm text-center py-4">
+                            No slots available today. Please select a future date or call us at +91 8595850920 for same-day bookings.
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground pt-1">
                           Subject to availability — we&apos;ll confirm via WhatsApp
                         </p>
@@ -604,11 +644,29 @@ Please contact me to confirm. Thank you!`.trim();
                               id="eventDate"
                               type="date"
                               value={eventDate}
-                              onChange={(e) => setEventDate(e.target.value)}
-                              min={new Date().toISOString().split("T")[0]}
+                              onChange={(e) => {
+                                const selected = new Date(e.target.value + "T00:00:00");
+                                const minDate = addHours(new Date(), 48);
+                                if (isBefore(selected, minDate)) {
+                                  setEventDateError("Event bookings require at least 48 hours notice");
+                                  setEventDate("");
+                                  return;
+                                }
+                                setEventDateError("");
+                                setEventDate(e.target.value);
+                              }}
+                              min={minEventDateStr}
                               className="bg-background border-border"
                               required
                             />
+                            {eventDateError && (
+                              <p className="text-red-400 text-xs mt-1 flex items-center gap-1">
+                                <span>⚠</span> {eventDateError}
+                              </p>
+                            )}
+                            <p className="text-muted-foreground text-xs">
+                              Event bookings require minimum 48 hours advance notice
+                            </p>
                           </div>
                           <div className="space-y-2">
                             <label htmlFor="eventTimeSlot" className="text-sm font-semibold text-foreground">
