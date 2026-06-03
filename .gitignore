@@ -45,3 +45,22 @@ backend/utils/__pycache__/
 
 # uploads (user-uploaded binaries should not be in git)
 uploads/
+
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.production
+.env.development
+.env.local.debug
+.env.local.test
+backend/.env
+*.env
+
+# Sensitive documentation — keep locally or in private Notion/Google Doc
+HANDOFF.md
+AUDIT_REPORT.md
+
+# Local debug/test scripts
+cryo-api-test.mjs
+cryo-admin-test.mjs
+*.test.mjs
