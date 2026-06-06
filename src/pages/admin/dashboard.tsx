@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw } from "lucide-react";
+import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -51,6 +51,10 @@ interface Announcement {
   expires_at: string | null;
   active: boolean;
   created_at: string;
+  image_url?: string | null;
+  cta_label?: string | null;
+  cta_url?: string | null;
+  cta_type?: string | null;
 }
 
 interface ServicePrice {
@@ -154,6 +158,16 @@ export default function AdminDashboard() {
   const [sendLoading, setSendLoading] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<Record<string, string>>({});
   const [deactivateLoading, setDeactivateLoading] = useState<string | null>(null);
+
+  // Image upload state
+  const [annImagePreview, setAnnImagePreview] = useState<string>("");
+  const [annImageUrl, setAnnImageUrl] = useState<string>("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // CTA state
+  const [annCtaLabel, setAnnCtaLabel] = useState<string>("");
+  const [annCtaUrl, setAnnCtaUrl] = useState<string>("");
+  const [annCtaType, setAnnCtaType] = useState<string>("link");
 
   // Pricing state
   const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
@@ -307,12 +321,22 @@ export default function AdminDashboard() {
   const postAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!annTitle.trim() || !annBody.trim()) return;
+    if (uploadingImage) { setPostError("Please wait for image to finish uploading"); return; }
     setPostLoading(true); setPostSuccess(""); setPostError("");
     try {
       const res = await fetch(`${API_URL}/api/notifications/announcements`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
-        body: JSON.stringify({ title: annTitle.trim(), body: annBody.trim(), type: annType, expires_at: annExpiresAt || null }),
+        body: JSON.stringify({
+          title: annTitle.trim(),
+          body: annBody.trim(),
+          type: annType,
+          expires_at: annExpiresAt || null,
+          image_url: annImageUrl || null,
+          cta_label: annCtaLabel || null,
+          cta_url: annCtaUrl || null,
+          cta_type: annCtaType,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { detail?: string };
@@ -320,6 +344,8 @@ export default function AdminDashboard() {
       }
       setPostSuccess("Announcement posted!");
       setAnnTitle(""); setAnnBody(""); setAnnType("general"); setAnnExpiresAt("");
+      setAnnImagePreview(""); setAnnImageUrl("");
+      setAnnCtaLabel(""); setAnnCtaUrl(""); setAnnCtaType("link");
       setAnnTick(t => t + 1);
     } catch (e: unknown) { setPostError(e instanceof Error ? e.message : "Failed to post"); }
     finally { setPostLoading(false); }
@@ -655,9 +681,125 @@ cryorevive.in | +91 08595850920`;
                         <Input type="datetime-local" value={annExpiresAt} onChange={e => setAnnExpiresAt(e.target.value)} />
                       </div>
                     </div>
+
+                    {/* Image Upload */}
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Announcement Image (optional)</label>
+                      {annImagePreview ? (
+                        <div className="relative mb-2">
+                          <img src={annImagePreview} alt="Preview" className="w-full h-48 object-cover rounded-lg border border-border" />
+                          <button
+                            type="button"
+                            onClick={() => { setAnnImagePreview(""); setAnnImageUrl(""); }}
+                            className="absolute top-2 right-2 bg-destructive hover:bg-destructive/80 text-white rounded-full p-1"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
+                          <Upload size={20} className="text-muted-foreground mb-1" />
+                          <span className="text-sm text-muted-foreground">Click to upload image</span>
+                          <span className="text-xs text-muted-foreground/60 mt-0.5">JPEG, PNG, WebP — max 5MB</span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setAnnImagePreview(URL.createObjectURL(file));
+                              setUploadingImage(true);
+                              try {
+                                const formData = new FormData();
+                                formData.append("file", file);
+                                const res = await fetch(`${API_URL}/api/notifications/announcements/upload-image`, {
+                                  method: "POST",
+                                  headers: { "X-Admin-Key": ADMIN_KEY },
+                                  body: formData,
+                                });
+                                const data = await res.json() as { url?: string; detail?: string };
+                                if (res.ok && data.url) {
+                                  setAnnImageUrl(data.url);
+                                } else {
+                                  alert("Upload failed: " + (data.detail ?? "Unknown error"));
+                                  setAnnImagePreview(""); setAnnImageUrl("");
+                                }
+                              } catch {
+                                alert("Upload failed — check connection");
+                                setAnnImagePreview(""); setAnnImageUrl("");
+                              } finally {
+                                setUploadingImage(false);
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                      {uploadingImage && <p className="text-xs text-primary mt-1">Uploading image…</p>}
+                      {annImageUrl && !uploadingImage && <p className="text-xs text-green-600 mt-1">✓ Image uploaded</p>}
+                    </div>
+
+                    {/* Call to Action */}
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Call to Action (optional)</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                        {([
+                          { type: "booking",  label: "📅 Book Now",   defaultUrl: "https://cryorevive.in/booking",          defaultLabel: "Book Now" },
+                          { type: "whatsapp", label: "💬 WhatsApp",   defaultUrl: "https://wa.me/918595850920",             defaultLabel: "Chat on WhatsApp" },
+                          { type: "link",     label: "🔗 Custom Link", defaultUrl: "",                                      defaultLabel: "" },
+                          { type: "phone",    label: "📞 Call Us",    defaultUrl: "tel:+918595850920",                      defaultLabel: "Call Us" },
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.type}
+                            type="button"
+                            onClick={() => {
+                              setAnnCtaType(opt.type);
+                              if (opt.defaultUrl) setAnnCtaUrl(opt.defaultUrl);
+                              if (!annCtaLabel && opt.defaultLabel) setAnnCtaLabel(opt.defaultLabel);
+                            }}
+                            className={`py-2 px-1 text-xs rounded-lg border transition-colors ${
+                              annCtaType === opt.type
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:border-border/80"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <Input
+                        value={annCtaLabel}
+                        onChange={e => setAnnCtaLabel(e.target.value)}
+                        placeholder="Button label e.g. Book Now, Grab Offer"
+                        className="mb-2"
+                      />
+                      <Input
+                        value={annCtaUrl}
+                        onChange={e => setAnnCtaUrl(e.target.value)}
+                        placeholder={
+                          annCtaType === "whatsapp" ? "https://wa.me/918595850920?text=..." :
+                          annCtaType === "booking"  ? "https://cryorevive.in/booking" :
+                          annCtaType === "phone"    ? "tel:+918595850920" :
+                          "https://..."
+                        }
+                      />
+                      {annCtaType === "whatsapp" && (
+                        <div className="mt-2">
+                          <p className="text-xs text-muted-foreground mb-1">Pre-fill WhatsApp message (optional):</p>
+                          <Input
+                            placeholder="e.g. Hi! I want to book a session"
+                            onChange={e => {
+                              const msg = encodeURIComponent(e.target.value);
+                              setAnnCtaUrl(`https://wa.me/918595850920?text=${msg}`);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     {postSuccess && <p className="text-sm font-medium text-green-600">{postSuccess}</p>}
                     {postError && <p className="text-sm font-medium text-destructive">{postError}</p>}
-                    <Button type="submit" disabled={postLoading} className="flex items-center gap-2">
+                    <Button type="submit" disabled={postLoading || uploadingImage} className="flex items-center gap-2">
                       {postLoading && <Spinner />}
                       {postLoading ? "Posting..." : "Post Announcement"}
                     </Button>
@@ -685,6 +827,8 @@ cryorevive.in | +91 08595850920`;
                                 <div className="flex flex-wrap gap-3 mt-2 text-xs text-muted-foreground">
                                   <span>Created: {new Date(a.created_at).toLocaleString()}</span>
                                   {a.expires_at && <span>Expires: {new Date(a.expires_at).toLocaleString()}</span>}
+                                  {a.image_url && <span className="text-green-600">📷 Image attached</span>}
+                                  {a.cta_label && <span className="text-primary">🔗 CTA: {a.cta_label}</span>}
                                 </div>
                                 {sendResult[a.id] && <p className="text-xs font-medium text-cyan-600 mt-1">{sendResult[a.id]}</p>}
                               </div>

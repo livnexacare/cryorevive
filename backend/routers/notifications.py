@@ -1,10 +1,11 @@
 import os
+import uuid
 import json
 import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from pywebpush import webpush, WebPushException
 
@@ -86,6 +87,10 @@ class AnnouncementIn(BaseModel):
     type: str = "general"
     url: Optional[str] = "/"
     expires_at: Optional[datetime] = None
+    image_url: Optional[str] = None
+    cta_label: Optional[str] = None
+    cta_url: Optional[str] = None
+    cta_type: Optional[str] = "link"  # whatsapp | link | booking | phone
 
 
 class SendPushIn(BaseModel):
@@ -94,6 +99,10 @@ class SendPushIn(BaseModel):
 
 class DeactivateIn(BaseModel):
     active: bool
+    image_url: Optional[str] = None
+    cta_label: Optional[str] = None
+    cta_url: Optional[str] = None
+    cta_type: Optional[str] = None
 
 
 # ── Subscribe ─────────────────────────────────────────────────────────────────
@@ -135,13 +144,30 @@ async def create_announcement(
     _require_admin(x_admin_key)
     ann_type = payload.type if payload.type in VALID_TYPES else "general"
     row = await db_fetchrow(
-        """INSERT INTO announcements (title, body, type, url, expires_at)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING id, title, body, type, url, expires_at, active, created_at""",
+        """INSERT INTO announcements
+               (title, body, type, url, expires_at, image_url, cta_label, cta_url, cta_type)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id, title, body, type, url, expires_at, active,
+                     image_url, cta_label, cta_url, cta_type, created_at""",
         payload.title, payload.body, ann_type,
         payload.url or "/", payload.expires_at,
+        payload.image_url, payload.cta_label, payload.cta_url, payload.cta_type or "link",
     )
     return row_to_dict(row)
+
+
+@router.post("/notifications/announcements/upload-image")
+async def upload_announcement_image(
+    file: UploadFile = File(...),
+    x_admin_key: str = Header(""),
+):
+    _require_admin(x_admin_key)
+    from utils.r2_upload import upload_to_r2
+    contents = await file.read()
+    ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "bin").lower()
+    path = f"announcements/{uuid.uuid4().hex}.{ext}"
+    url = upload_to_r2(contents, path, file.content_type or "image/jpeg")
+    return {"url": url, "filename": path}
 
 
 # ── Admin: send push for an existing announcement ─────────────────────────────
@@ -178,7 +204,14 @@ async def update_announcement(
     if not existing:
         raise HTTPException(status_code=404, detail="Announcement not found")
     await db_execute(
-        "UPDATE announcements SET active = $1 WHERE id = $2",
-        payload.active, announcement_id,
+        """UPDATE announcements
+           SET active = $1,
+               image_url = COALESCE($2, image_url),
+               cta_label = COALESCE($3, cta_label),
+               cta_url   = COALESCE($4, cta_url),
+               cta_type  = COALESCE($5, cta_type)
+           WHERE id = $6""",
+        payload.active, payload.image_url, payload.cta_label,
+        payload.cta_url, payload.cta_type, announcement_id,
     )
     return {"ok": True}

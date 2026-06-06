@@ -6,6 +6,10 @@ interface Announcement {
   title: string
   body: string
   type: 'general' | 'offer' | 'feature' | 'event'
+  image_url?: string | null
+  cta_label?: string | null
+  cta_url?: string | null
+  cta_type?: string | null
 }
 
 const TYPE_STYLES = {
@@ -92,19 +96,31 @@ export default function AnnouncementPopup() {
         w-full max-w-md mx-4
         bg-gray-900 border ${style.border} rounded-2xl
         shadow-2xl ${style.glow}
+        overflow-hidden
         animate-popup
       `}>
 
         {/* Close button */}
         <button
           onClick={handleDismiss}
-          className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors p-1"
+          className="absolute top-4 right-4 z-10 text-gray-500 hover:text-white transition-colors p-1"
         >
           <X size={20} />
         </button>
 
+        {/* Hero image */}
+        {ann.image_url && (
+          <div className="w-full">
+            <img
+              src={ann.image_url}
+              alt={ann.title}
+              className="w-full h-48 object-cover"
+            />
+          </div>
+        )}
+
         {/* Type badge */}
-        <div className="px-6 pt-6 pb-0">
+        <div className={`px-6 pb-0 ${ann.image_url ? 'pt-4' : 'pt-6'}`}>
           <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold text-white ${style.badge}`}>
             {TYPE_LABELS[ann.type]}
           </span>
@@ -135,9 +151,30 @@ export default function AnnouncementPopup() {
         )}
 
         {/* Actions */}
-        <div className="px-6 pb-6 flex gap-3">
+        <div className="px-6 pb-6 flex flex-col gap-3">
+          {/* CTA button */}
+          {ann.cta_label && ann.cta_url && (
+            <a
+              href={ann.cta_url}
+              target={ann.cta_type === 'phone' ? '_self' : '_blank'}
+              rel="noopener noreferrer"
+              onClick={handleDismiss}
+              className="w-full py-3 text-sm text-white font-bold
+                         bg-gradient-to-r from-cyan-600 to-cyan-500
+                         hover:from-cyan-500 hover:to-cyan-400
+                         rounded-xl transition-all text-center block
+                         shadow-lg shadow-cyan-500/20"
+            >
+              {ann.cta_type === 'whatsapp' && '💬 '}
+              {ann.cta_type === 'booking' && '📅 '}
+              {ann.cta_type === 'phone' && '📞 '}
+              {ann.cta_label}
+            </a>
+          )}
+
+          {/* Dismiss / Next */}
           {announcements.length > 1 && current < announcements.length - 1 ? (
-            <>
+            <div className="flex gap-3">
               <button
                 onClick={handleDismiss}
                 className="flex-1 py-2.5 text-sm text-gray-400 border border-gray-700 rounded-xl hover:border-gray-500 transition-colors"
@@ -150,7 +187,7 @@ export default function AnnouncementPopup() {
               >
                 Next →
               </button>
-            </>
+            </div>
           ) : (
             <button
               onClick={handleDismiss}
