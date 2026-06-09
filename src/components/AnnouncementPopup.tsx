@@ -93,7 +93,7 @@ export default function AnnouncementPopup() {
       {/* Popup */}
       <div className={`
         fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
-        w-full max-w-md mx-4
+        w-[calc(100%-32px)] max-w-md
         bg-gray-900 border ${style.border} rounded-2xl
         shadow-2xl ${style.glow}
         overflow-hidden
@@ -110,11 +110,15 @@ export default function AnnouncementPopup() {
 
         {/* Hero image */}
         {ann.image_url && (
-          <div className="w-full">
+          <div className="w-full overflow-hidden rounded-t-2xl">
             <img
               src={ann.image_url}
               alt={ann.title}
-              className="w-full h-48 object-cover"
+              className="w-full object-cover"
+              style={{ maxHeight: '280px', minHeight: '160px' }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).parentElement!.style.display = 'none'
+              }}
             />
           </div>
         )}

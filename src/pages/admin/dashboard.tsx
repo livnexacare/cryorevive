@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload } from "lucide-react";
+import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -168,6 +168,10 @@ export default function AdminDashboard() {
   const [annCtaLabel, setAnnCtaLabel] = useState<string>("");
   const [annCtaUrl, setAnnCtaUrl] = useState<string>("");
   const [annCtaType, setAnnCtaType] = useState<string>("link");
+
+  // Preview state
+  const [imagePreviewSize, setImagePreviewSize] = useState("h-auto");
+  const [showPreview, setShowPreview] = useState(false);
 
   // Pricing state
   const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
@@ -686,15 +690,50 @@ cryorevive.in | +91 08595850920`;
                     <div>
                       <label className="text-sm font-medium mb-1 block">Announcement Image (optional)</label>
                       {annImagePreview ? (
-                        <div className="relative mb-2">
-                          <img src={annImagePreview} alt="Preview" className="w-full h-48 object-cover rounded-lg border border-border" />
-                          <button
-                            type="button"
-                            onClick={() => { setAnnImagePreview(""); setAnnImageUrl(""); }}
-                            className="absolute top-2 right-2 bg-destructive hover:bg-destructive/80 text-white rounded-full p-1"
-                          >
-                            <X size={14} />
-                          </button>
+                        <div className="mb-2">
+                          <div className="relative mb-2">
+                            <img src={annImagePreview} alt="Preview" className="w-full h-48 object-cover rounded-lg border border-border" />
+                            <button
+                              type="button"
+                              onClick={() => { setAnnImagePreview(""); setAnnImageUrl(""); setImagePreviewSize("h-auto"); }}
+                              className="absolute top-2 right-2 bg-destructive hover:bg-destructive/80 text-white rounded-full p-1"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                          {annImageUrl && (
+                            <div className="mt-3">
+                              <p className="text-muted-foreground text-xs mb-2">Preview crop style</p>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                {([
+                                  { label: 'Full Width', height: 'h-auto' },
+                                  { label: 'Banner 16:9', height: 'aspect-video' },
+                                  { label: 'Square 1:1', height: 'aspect-square' },
+                                  { label: 'Portrait 4:5', height: 'aspect-[4/5]' },
+                                ]).map(size => (
+                                  <button
+                                    key={size.label}
+                                    type="button"
+                                    onClick={() => setImagePreviewSize(size.height)}
+                                    className={`px-2 py-1 text-xs rounded-lg border transition-colors ${
+                                      imagePreviewSize === size.height
+                                        ? 'border-primary text-primary bg-primary/10'
+                                        : 'border-border text-muted-foreground hover:border-border/60'
+                                    }`}
+                                  >
+                                    {size.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className={`w-full overflow-hidden rounded-xl border border-border ${imagePreviewSize !== 'h-auto' ? imagePreviewSize : ''}`}>
+                                <img
+                                  src={annImageUrl}
+                                  alt="Crop preview"
+                                  className={`w-full object-cover ${imagePreviewSize === 'h-auto' ? 'h-auto' : 'h-full'}`}
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
@@ -799,6 +838,19 @@ cryorevive.in | +91 08595850920`;
 
                     {postSuccess && <p className="text-sm font-medium text-green-600">{postSuccess}</p>}
                     {postError && <p className="text-sm font-medium text-destructive">{postError}</p>}
+
+                    {/* Preview button */}
+                    {annTitle && annBody && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPreview(true)}
+                        className="w-full py-2.5 text-sm border border-border text-muted-foreground rounded-xl hover:border-border/60 hover:bg-muted/30 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Eye size={14} />
+                        Preview Announcement
+                      </button>
+                    )}
+
                     <Button type="submit" disabled={postLoading || uploadingImage} className="flex items-center gap-2">
                       {postLoading && <Spinner />}
                       {postLoading ? "Posting..." : "Post Announcement"}
@@ -806,6 +858,50 @@ cryorevive.in | +91 08595850920`;
                   </form>
                 </CardContent>
               </Card>
+
+              {/* Preview Modal */}
+              {showPreview && (
+                <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+                  <div className="w-full max-w-md">
+                    <p className="text-muted-foreground text-xs text-center mb-3">Preview — how it will appear on site</p>
+                    <div className="bg-gray-900 border border-cyan-500/40 rounded-2xl overflow-hidden shadow-2xl">
+                      {annImageUrl && (
+                        <img src={annImageUrl} alt={annTitle} className="w-full object-cover" style={{ maxHeight: '280px' }} />
+                      )}
+                      <div className="px-5 pt-4 pb-2">
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold text-white ${
+                          annType === 'offer' ? 'bg-amber-500' :
+                          annType === 'feature' ? 'bg-cyan-500' :
+                          annType === 'event' ? 'bg-purple-500' : 'bg-gray-500'
+                        }`}>
+                          {annType === 'offer' ? '🎁 Special Offer' :
+                           annType === 'feature' ? '✨ New Feature' :
+                           annType === 'event' ? '📅 Event' : '📢 Announcement'}
+                        </span>
+                        <h2 className="text-white text-lg font-bold mt-2 mb-2">{annTitle}</h2>
+                        <p className="text-gray-300 text-sm leading-relaxed mb-4">{annBody}</p>
+                        {annCtaLabel && (
+                          <div className="w-full py-3 text-sm text-white font-bold bg-gradient-to-r from-cyan-600 to-cyan-500 rounded-xl text-center mb-3">
+                            {annCtaType === 'whatsapp' && '💬 '}
+                            {annCtaType === 'booking' && '📅 '}
+                            {annCtaType === 'phone' && '📞 '}
+                            {annCtaLabel}
+                          </div>
+                        )}
+                        <div className="w-full py-2.5 text-sm text-center text-gray-400 border border-gray-700 rounded-xl">
+                          Got it!
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowPreview(false)}
+                      className="w-full mt-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Close Preview
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <Card>
                 <CardHeader><CardTitle>Active Announcements</CardTitle></CardHeader>
