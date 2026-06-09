@@ -43,7 +43,7 @@ app.include_router(pricing.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "1.1.0"}
 
 
 @app.on_event("startup")
