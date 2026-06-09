@@ -15,7 +15,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-app = FastAPI(title="CryoRevive API", version="1.0.0")
+app = FastAPI(title="CryoRevive API", version="1.2.0")
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").split(",")
 allowed_origins = [o.strip() for o in allowed_origins_env if o.strip()]
