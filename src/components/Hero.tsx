@@ -34,7 +34,7 @@ export function Hero() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-              <Link href="/booking" className="w-full sm:w-auto">
+              <Link href="/booking?tab=event" className="w-full sm:w-auto">
                 <Button
                   size="lg"
                   className="w-full sm:w-auto py-3 text-sm font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl group"

@@ -89,8 +89,8 @@ export default function Services() {
     }
   ];
 
-  const handleBookService = (serviceType: string | null) => {
-    if (serviceType) router.push(`/booking?service=${serviceType}`);
+  const handleBookService = () => {
+    router.push('/booking?tab=event');
   };
 
   return (
@@ -186,7 +186,7 @@ export default function Services() {
                       {service.serviceType ? (
                         <Button
                           size="lg"
-                          onClick={() => handleBookService(service.serviceType)}
+                          onClick={() => handleBookService()}
                           className={`w-full md:w-auto py-3 text-sm rounded-xl ${service.color === 'text-primary' ? 'bg-primary hover:bg-primary/90' : 'bg-accent hover:bg-accent/90'} text-background font-semibold mt-4`}
                         >
                           Book {service.title}
@@ -218,7 +218,7 @@ export default function Services() {
               Book your first session and experience the difference elite recovery makes.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center">
-              <Link href="/booking" className="w-full sm:w-auto">
+              <Link href="/booking?tab=event" className="w-full sm:w-auto">
                 <Button
                   size="lg"
                   className="w-full sm:w-auto py-3 text-sm rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"

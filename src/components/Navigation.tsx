@@ -45,7 +45,7 @@ export function Navigation() {
               </Link>
             ))}
             <NotificationButton />
-            <Link href="/booking">
+            <Link href="/booking?tab=event">
               <Button variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
                 Book Now
               </Button>
@@ -54,7 +54,7 @@ export function Navigation() {
 
           <div className="md:hidden flex items-center gap-1.5">
             <NotificationButton />
-            <Link href="/booking">
+            <Link href="/booking?tab=event">
               <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs px-3 py-1.5 h-auto rounded-full">
                 Book Now
               </Button>
@@ -86,7 +86,7 @@ export function Navigation() {
                 {link.label}
               </Link>
             ))}
-            <Link href="/booking" onClick={() => setMobileMenuOpen(false)}>
+            <Link href="/booking?tab=event" onClick={() => setMobileMenuOpen(false)}>
               <Button variant="default" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
                 Book Now
               </Button>
