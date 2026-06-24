@@ -6,18 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Zap, Trophy, Users } from "lucide-react";
 import Link from "next/link";
-import type { ServicePrice } from "@/lib/pricing";
+import { fetchLivePrices, type ServicePrice } from "@/lib/pricing";
 
 export async function getServerSideProps() {
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com"}/api/pricing/services`
-    );
-    const prices: ServicePrice[] = await res.json();
-    return { props: { prices: Array.isArray(prices) ? prices : [] } };
-  } catch {
-    return { props: { prices: [] } };
-  }
+  const prices = await fetchLivePrices();
+  return { props: { prices } };
 }
 
 export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
@@ -29,7 +22,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
   const singleSessions = [
     {
       title: "Ice Bath Session",
-      price: getPrice("ice_bath", "₹800"),
+      price: getPrice("ice_bath", "₹899"),
       duration: "15 minutes",
       description: "Single cold plunge therapy session",
       features: [
@@ -41,7 +34,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Steam Sauna Session",
-      price: getPrice("steam_sauna", "₹700"),
+      price: getPrice("steam_sauna", "₹999"),
       duration: "20 minutes",
       description: "Single high-heat sauna session",
       features: [
@@ -53,7 +46,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Contrast Therapy",
-      price: getPrice("contrast_therapy", "₹1,400"),
+      price: getPrice("contrast_therapy", "₹1,999"),
       duration: "45 minutes",
       description: "Complete hot-cold cycle protocol",
       features: [
