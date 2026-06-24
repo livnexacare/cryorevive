@@ -162,9 +162,12 @@ Please contact me to confirm. Thank you!`.trim();
                   </h2>
 
                   {/* Message */}
-                  <p className="text-gray-300 text-base leading-relaxed mb-6">
+                  <p className="text-gray-300 text-base leading-relaxed mb-2">
                     Our dedicated recovery centre is currently being set up.
                     We are excited to open our doors soon!
+                  </p>
+                  <p className="text-amber-400 font-semibold text-sm mb-6">
+                    Will Start on 31st July
                   </p>
 
                   {/* Divider */}
