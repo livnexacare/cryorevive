@@ -402,7 +402,7 @@ Please contact me to confirm. Thank you!`.trim();
                                 <Input
                                   id="eventPhone"
                                   type="tel"
-                                  placeholder="+91 98914 30920"
+                                  placeholder="+91 85958 50920"
                                   value={eventPhone}
                                   onChange={(e) => setEventPhone(e.target.value)}
                                   className="bg-background border-border"

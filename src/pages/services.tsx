@@ -4,7 +4,7 @@ import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
 import { Button } from "@/components/ui/button";
-import { Snowflake, Droplets, Repeat, Truck, Clock, Thermometer, CheckCircle } from "lucide-react";
+import { Snowflake, Droplets, Repeat, Truck, Activity, Sparkles, Clock, Thermometer, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function Services() {
@@ -16,7 +16,8 @@ export default function Services() {
       title: "Ice Bath Therapy",
       tagline: "Precision Cold Immersion",
       description: "Clinical-grade cold plunge therapy designed to reduce inflammation, accelerate muscle recovery, and enhance athletic performance through controlled cold exposure.",
-      temperature: "-10°C to 4°C",
+      statLabel: "Temperature",
+      statValue: "-10°C to 4°C",
       duration: "3-15 minutes",
       color: "text-primary",
       bgColor: "bg-primary/10",
@@ -35,7 +36,8 @@ export default function Services() {
       title: "Steam Sauna",
       tagline: "High-Heat Muscle Therapy",
       description: "Premium steam sauna sessions using controlled high-heat therapy to promote deep muscle relaxation, detoxification, and cardiovascular conditioning.",
-      temperature: "60-90°C",
+      statLabel: "Temperature",
+      statValue: "60-90°C",
       duration: "15-20 minutes",
       color: "text-accent",
       bgColor: "bg-accent/10",
@@ -54,7 +56,8 @@ export default function Services() {
       title: "Contrast Therapy",
       tagline: "Elite Recovery Protocol",
       description: "Advanced alternating hot-cold cycles combining ice bath and sauna therapy. The protocol used by professional athletes for maximum recovery optimization.",
-      temperature: "Variable cycles",
+      statLabel: "Temperature",
+      statValue: "Variable cycles",
       duration: "30-45 minutes",
       color: "text-primary",
       bgColor: "bg-primary/10",
@@ -69,11 +72,52 @@ export default function Services() {
       image: "/contrast-therapy.png"
     },
     {
+      icon: Activity,
+      title: "Compression Therapy",
+      tagline: "Circulation Recovery",
+      description: "Advanced pneumatic compression technology that systematically squeezes and releases to improve blood circulation, flush out lactic acid, and accelerate muscle recovery after intense training.",
+      statLabel: "Technology",
+      statValue: "Pneumatic Air",
+      duration: "30 minutes",
+      color: "text-primary",
+      bgColor: "bg-primary/10",
+      serviceType: "compression_therapy",
+      benefits: [
+        "Air compression therapy for deep recovery",
+        "Leg and full body coverage options",
+        "Reduces swelling and inflammation",
+        "Improves lymphatic drainage",
+        "Accelerates post-workout recovery"
+      ],
+      image: "/compression-therapy.png"
+    },
+    {
+      icon: Sparkles,
+      title: "Full Body Recovery",
+      tagline: "Complete Recovery Protocol",
+      description: "The ultimate 60-minute recovery experience combining cold plunge, compression therapy, and massage gun treatment — designed for athletes who demand peak performance and complete muscle restoration.",
+      statLabel: "Modalities",
+      statValue: "4-in-1 Protocol",
+      duration: "60 minutes",
+      color: "text-accent",
+      bgColor: "bg-accent/10",
+      serviceType: "full_body_recovery",
+      benefits: [
+        "Cold plunge therapy included",
+        "Compression therapy included",
+        "Massage gun recovery treatment",
+        "Expert recovery guidance",
+        "Complete athlete restoration protocol"
+      ],
+      image: "/full-body.png"
+    },
+    {
       icon: Truck,
       title: "Mobile Recovery Unit",
       tagline: "On-Site Elite Services",
       description: "Bring CryoRevive's elite recovery technology to your gym, event, or team facility. Complete mobile setup with professional supervision.",
-      temperature: "Full range",
+      statLabel: "Temperature",
+      statValue: "Full range",
       duration: "Custom sessions",
       color: "text-accent",
       bgColor: "bg-accent/10",
@@ -160,9 +204,9 @@ export default function Services() {
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5">
                             <Thermometer className={`h-4 w-4 ${service.color}`} />
-                            <span className="text-xs md:text-sm text-muted-foreground">Temperature</span>
+                            <span className="text-xs md:text-sm text-muted-foreground">{service.statLabel}</span>
                           </div>
-                          <p className="text-sm md:text-xl font-display font-bold">{service.temperature}</p>
+                          <p className="text-sm md:text-xl font-display font-bold">{service.statValue}</p>
                         </div>
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5">

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Snowflake, Droplets, Repeat, Truck } from "lucide-react";
+import { Snowflake, Droplets, Repeat, Truck, Activity, Sparkles } from "lucide-react";
 import type { ServicePrice } from "@/lib/pricing";
 
 const STATIC_SERVICES = [
@@ -31,6 +31,24 @@ const STATIC_SERVICES = [
     service_type: "contrast_therapy",
     color: "text-primary",
     bgColor: "bg-primary/10",
+  },
+  {
+    icon: Activity,
+    title: "Compression Therapy",
+    description: "Pneumatic air compression to improve circulation, reduce soreness, and speed up recovery.",
+    duration: "30 min",
+    service_type: "compression_therapy",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
+  },
+  {
+    icon: Sparkles,
+    title: "Full Body Recovery",
+    description: "Cold plunge, compression, and massage gun combined into one complete recovery protocol.",
+    duration: "60 min",
+    service_type: "full_body_recovery",
+    color: "text-accent",
+    bgColor: "bg-accent/10",
   },
   {
     icon: Truck,

@@ -55,6 +55,30 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
         "Elite recovery protocol",
         "Full facility access"
       ]
+    },
+    {
+      title: "Compression Therapy",
+      price: getPrice("compression_therapy", "₹999"),
+      duration: "30 minutes",
+      description: "Improve circulation and reduce muscle soreness",
+      features: [
+        "Air compression therapy",
+        "Leg & full body options",
+        "Reduces swelling and inflammation",
+        "Recovery boost"
+      ]
+    },
+    {
+      title: "Full Body Recovery",
+      price: getPrice("full_body_recovery", "₹2,999"),
+      duration: "60 minutes",
+      description: "Complete recovery experience for your body and mind",
+      features: [
+        "Cold plunge",
+        "Compression therapy",
+        "Massage gun",
+        "Recovery guidance"
+      ]
     }
   ];
 

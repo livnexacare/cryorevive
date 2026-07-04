@@ -45,6 +45,24 @@ export const SERVICES: Service[] = [
     description: 'Whole-body cryotherapy in sub-zero chamber for rapid recovery',
     serviceType: 'cryo_chamber',
   },
+  {
+    id: 'compression_therapy',
+    name: 'Compression Therapy',
+    duration: '30 min',
+    price: 0,
+    priceDisplay: '',
+    description: 'Improve circulation and reduce muscle soreness',
+    serviceType: 'compression_therapy',
+  },
+  {
+    id: 'full_body_recovery',
+    name: 'Full Body Recovery',
+    duration: '60 min',
+    price: 0,
+    priceDisplay: '',
+    description: 'Complete recovery experience for your body and mind',
+    serviceType: 'full_body_recovery',
+  },
 ]
 
 export const getService = (serviceType: string): Service | undefined =>
