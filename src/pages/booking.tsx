@@ -359,9 +359,12 @@ export default function Booking() {
   };
 
   useEffect(() => {
-    const { tab } = router.query;
+    const { tab, service } = router.query;
     if (tab === "event") {
       setActiveTab("event");
+    }
+    if (typeof service === "string" && getService(service)) {
+      setSelectedService(service);
     }
   }, [router.query]);
 
