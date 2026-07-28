@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
-import { format, addHours, isBefore } from "date-fns";
+import { format, addHours, addDays, isBefore } from "date-fns";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
@@ -8,8 +8,100 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  CheckCircle,
+  Snowflake,
+  Flame,
+  Repeat,
+  Thermometer,
+  Activity,
+  Sparkles,
+  Loader2,
+  ArrowLeft,
+} from "lucide-react";
+import { API_URL } from "@/lib/api";
+import { SERVICES, getService } from "@/lib/services";
+import { fetchLivePrices, getServicePrice, formatPrice, type ServicePrice } from "@/lib/pricing";
 const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "918595850920";
+
+const CENTRE_ICONS: Record<string, typeof Snowflake> = {
+  ice_bath: Snowflake,
+  steam_sauna: Flame,
+  contrast_therapy: Repeat,
+  cryo_chamber: Thermometer,
+  compression_therapy: Activity,
+  full_body_recovery: Sparkles,
+};
+
+const GOALS = ["Recovery", "Muscle Soreness", "Fat Loss", "Injury Rehab", "General Wellness", "Other"];
+const REFERRAL_SOURCES = ["Friend", "Instagram", "Google", "Gym", "Event", "Other"];
+
+interface BookingDetails {
+  full_name: string;
+  mobile: string;
+  email: string;
+  age: string;
+  gender: "Male" | "Female" | "Other" | "";
+  address: string;
+  health_high_bp: boolean;
+  health_heart: boolean;
+  health_asthma: boolean;
+  health_seizures: boolean;
+  health_diabetes: boolean;
+  health_pregnancy: boolean;
+  health_other: string;
+  primary_goal: string;
+  emergency_name: string;
+  emergency_phone: string;
+  emergency_relation: string;
+  referral_source: string;
+  referral_code: string;
+  first_time: boolean;
+  consent_accepted: boolean;
+}
+
+const EMPTY_DETAILS: BookingDetails = {
+  full_name: "",
+  mobile: "+91 ",
+  email: "",
+  age: "",
+  gender: "",
+  address: "",
+  health_high_bp: false,
+  health_heart: false,
+  health_asthma: false,
+  health_seizures: false,
+  health_diabetes: false,
+  health_pregnancy: false,
+  health_other: "",
+  primary_goal: "",
+  emergency_name: "",
+  emergency_phone: "",
+  emergency_relation: "",
+  referral_source: "",
+  referral_code: "",
+  first_time: false,
+  consent_accepted: false,
+};
+
+const HEALTH_ITEMS: Array<{ key: keyof BookingDetails; label: string }> = [
+  { key: "health_high_bp", label: "High Blood Pressure" },
+  { key: "health_seizures", label: "Seizures" },
+  { key: "health_heart", label: "Heart Condition" },
+  { key: "health_diabetes", label: "Diabetes" },
+  { key: "health_asthma", label: "Asthma" },
+  { key: "health_pregnancy", label: "Pregnancy" },
+];
 
 const EVENT_TYPES = [
   "Marathon / Running Event",
@@ -42,6 +134,224 @@ export default function Booking() {
   const [eventDateError, setEventDateError] = useState("");
 
   const minEventDateStr = format(addHours(new Date(), 48), "yyyy-MM-dd");
+
+  // In-centre wizard state
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [livePrices, setLivePrices] = useState<ServicePrice[]>([]);
+  const [pricesLoading, setPricesLoading] = useState(true);
+  const [selectedService, setSelectedService] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState("");
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [details, setDetails] = useState<BookingDetails>(EMPTY_DETAILS);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [wizardError, setWizardError] = useState("");
+  const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [confirmedBooking, setConfirmedBooking] = useState<{
+    serviceName: string;
+    date: string;
+    timeSlot: string;
+    amount: number;
+    email: string;
+    paymentId: string;
+  } | null>(null);
+
+  const minCentreDateStr = format(new Date(), "yyyy-MM-dd");
+  const maxCentreDateStr = format(addDays(new Date(), 90), "yyyy-MM-dd");
+  const centreServices = SERVICES.filter((s) => s.serviceType !== "mobile_unit");
+  const selectedServicePrice = getServicePrice(livePrices, selectedService);
+
+  useEffect(() => {
+    fetchLivePrices()
+      .then(setLivePrices)
+      .finally(() => setPricesLoading(false));
+  }, []);
+
+  const loadSlots = useCallback(async () => {
+    if (!selectedDate || !selectedService) return;
+    setSlotsLoading(true);
+    setSelectedTimeSlot("");
+    try {
+      const res = await fetch(
+        `${API_URL}/api/slots?date=${selectedDate}&service_type=${selectedService}`
+      );
+      const data = await res.json();
+      setAvailableSlots(res.ok ? data.available_slots ?? [] : []);
+    } catch {
+      setAvailableSlots([]);
+    } finally {
+      setSlotsLoading(false);
+    }
+  }, [selectedDate, selectedService]);
+
+  useEffect(() => {
+    loadSlots();
+  }, [loadSlots]);
+
+  const formatSlotLabel = (slot: string) => {
+    const [h, m] = slot.split(":").map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return format(d, "h:mm a");
+  };
+
+  const canContinueStep3 =
+    details.full_name.trim().length > 1 &&
+    details.mobile.replace("+91", "").trim().length >= 10 &&
+    /\S+@\S+\.\S+/.test(details.email) &&
+    Number(details.age) > 0 &&
+    details.gender !== "" &&
+    details.consent_accepted;
+
+  const resetWizard = () => {
+    setWizardStep(1);
+    setSelectedService("");
+    setSelectedDate("");
+    setSelectedTimeSlot("");
+    setDetails(EMPTY_DETAILS);
+    setWizardError("");
+    setBookingConfirmed(false);
+    setConfirmedBooking(null);
+  };
+
+  const handlePayment = async () => {
+    if (!selectedServicePrice) {
+      setWizardError("This service is not available for booking right now.");
+      return;
+    }
+    setWizardError("");
+    setIsProcessing(true);
+
+    try {
+      const bookingRes = await fetch(`${API_URL}/api/bookings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: details.full_name.trim(),
+          email: details.email.trim(),
+          phone: details.mobile.trim(),
+          service_type: selectedService,
+          date: selectedDate,
+          time_slot: selectedTimeSlot,
+          notes: JSON.stringify({
+            age: Number(details.age),
+            gender: details.gender,
+            address: details.address,
+            health: {
+              high_bp: details.health_high_bp,
+              heart: details.health_heart,
+              asthma: details.health_asthma,
+              seizures: details.health_seizures,
+              diabetes: details.health_diabetes,
+              pregnancy: details.health_pregnancy,
+              other: details.health_other,
+            },
+            goal: details.primary_goal,
+            emergency: {
+              name: details.emergency_name,
+              phone: details.emergency_phone,
+              relation: details.emergency_relation,
+            },
+            referral: details.referral_source,
+            referral_code: details.referral_code,
+            first_time: details.first_time,
+          }),
+        }),
+      });
+      const booking = await bookingRes.json();
+      if (!bookingRes.ok) {
+        throw new Error(booking.detail || "Failed to create booking");
+      }
+
+      const orderRes = await fetch(`${API_URL}/api/payments/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_id: booking.id,
+          amount: selectedServicePrice.price,
+          currency: "INR",
+        }),
+      });
+      const order = await orderRes.json();
+      if (!orderRes.ok) {
+        throw new Error(order.detail || "Failed to create payment order");
+      }
+
+      if (!(window as any).Razorpay) {
+        throw new Error("Payment gateway failed to load. Please refresh and try again.");
+      }
+
+      const rzp = new (window as any).Razorpay({
+        key: order.key_id,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.razorpay_order_id,
+        name: "CryoRevive",
+        description: `${getService(selectedService)?.name ?? "Recovery Session"} — ${format(
+          new Date(selectedDate + "T00:00:00"),
+          "dd MMM yyyy"
+        )} ${formatSlotLabel(selectedTimeSlot)}`,
+        prefill: {
+          name: details.full_name,
+          email: details.email,
+          contact: details.mobile,
+        },
+        theme: { color: "#06b6d4" },
+        handler: async (response: any) => {
+          try {
+            const verifyRes = await fetch("/api/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+            const verify = await verifyRes.json();
+
+            if (verify.success) {
+              setBookingConfirmed(true);
+              setConfirmedBooking({
+                serviceName: getService(selectedService)?.name ?? selectedService,
+                date: selectedDate,
+                timeSlot: selectedTimeSlot,
+                amount: selectedServicePrice.price,
+                email: details.email,
+                paymentId: response.razorpay_payment_id,
+              });
+
+              const msg = encodeURIComponent(
+                `✅ Payment confirmed!\n\n` +
+                  `Booking: ${getService(selectedService)?.name}\n` +
+                  `Date: ${format(new Date(selectedDate + "T00:00:00"), "dd MMM yyyy")}\n` +
+                  `Time: ${formatSlotLabel(selectedTimeSlot)}\n` +
+                  `Name: ${details.full_name}\n` +
+                  `Payment ID: ${response.razorpay_payment_id}`
+              );
+              setTimeout(() => {
+                window.open(`https://wa.me/${ADMIN_WA}?text=${msg}`, "_blank");
+              }, 1500);
+            } else {
+              setWizardError("Payment verification failed. Please contact support.");
+            }
+          } catch {
+            setWizardError("Payment verification failed. Please contact support.");
+          } finally {
+            setIsProcessing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => setIsProcessing(false),
+        },
+      });
+      rzp.open();
+    } catch (err: any) {
+      setWizardError(err.message || "Something went wrong. Please try again.");
+      setIsProcessing(false);
+    }
+  };
 
   useEffect(() => {
     const { tab } = router.query;
@@ -142,98 +452,498 @@ Please contact me to confirm. Thank you!`.trim();
 
             {/* ══ In-Centre Tab ══ */}
             {activeTab === "incentre" && (
-              <div className="max-w-2xl mx-auto py-12 px-4">
-
-                {/* Status Card */}
-                <div className="bg-gray-900/80 border border-amber-500/30
-                                rounded-2xl p-8 text-center
-                                shadow-xl shadow-amber-500/10">
-
-                  {/* Icon */}
-                  <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/30
-                                  rounded-2xl flex items-center justify-center
-                                  mx-auto mb-6">
-                    <span className="text-3xl">🏗️</span>
-                  </div>
-
-                  {/* Heading */}
-                  <h2 className="text-white text-2xl font-bold mb-3">
-                    Centre Coming Soon
-                  </h2>
-
-                  {/* Message */}
-                  <p className="text-gray-300 text-base leading-relaxed mb-2">
-                    Our dedicated recovery centre is currently being set up.
-                    We are excited to open our doors soon!
-                  </p>
-                  <p className="text-amber-400 font-semibold text-sm mb-6">
-                    Will Start on 31st July
-                  </p>
-
-                  {/* Divider */}
-                  <div className="border-t border-white/10 my-6" />
-
-                  {/* Current offering */}
-                  <div className="bg-cyan-950/50 border border-cyan-500/20
-                                  rounded-xl p-5 mb-6 text-left">
-                    <p className="text-cyan-300 font-semibold text-sm mb-3
-                                  flex items-center gap-2">
-                      <span>✅</span> Currently Available
-                    </p>
-                    <p className="text-white font-bold text-lg mb-2">
-                      Mobile Recovery Unit
-                    </p>
-                    <p className="text-gray-300 text-sm leading-relaxed">
-                      We bring professional cold therapy &amp; sauna recovery
-                      directly to your home, gym, or event —
-                      for groups of <strong className="text-white">10 or more people</strong>.
-                    </p>
-
-                    <div className="mt-4 space-y-2">
-                      {[
-                        '🏠 At your home or residence',
-                        '🏋️ At your gym or sports academy',
-                        '🏃 At marathons and athletic events',
-                        '🎯 Corporate wellness events',
-                        '⚡ Minimum 10 participants',
-                      ].map(item => (
-                        <div key={item} className="flex items-center gap-2">
-                          <span className="text-sm text-gray-300">{item}</span>
+              <div className="max-w-2xl mx-auto">
+                {bookingConfirmed && confirmedBooking ? (
+                  <Card className="bg-card border-border">
+                    <CardContent className="py-12 px-6 text-center">
+                      <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                      <h2 className="text-2xl font-display font-bold mb-2">Booking Confirmed!</h2>
+                      <p className="text-muted-foreground mb-6">
+                        Payment successful. See you at the studio!
+                      </p>
+                      <div className="bg-muted/40 rounded-2xl p-6 text-left mb-6 space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Service</span>
+                          <span className="font-bold">{confirmedBooking.serviceName}</span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Date</span>
+                          <span className="font-bold">
+                            {format(new Date(confirmedBooking.date + "T00:00:00"), "EEEE, dd MMMM yyyy")}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Time</span>
+                          <span className="font-bold">{formatSlotLabel(confirmedBooking.timeSlot)}</span>
+                        </div>
+                        <div className="flex justify-between pt-3 border-t border-border">
+                          <span className="text-muted-foreground">Payment</span>
+                          <span className="font-bold text-primary">
+                            {formatPrice(confirmedBooking.amount)} Paid
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-6">
+                        Confirmation sent to {confirmedBooking.email}
+                      </p>
+                      <Button type="button" variant="outline" onClick={resetWizard}>
+                        Book Another Session
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="bg-card border-border">
+                    <CardContent className="p-4 sm:p-8">
+                      {/* Step indicator */}
+                      <div className="flex items-center mb-8">
+                        {["Service", "Date & Time", "Details", "Pay"].map((label, i) => (
+                          <div key={label} className="flex items-center flex-1 last:flex-none">
+                            <div className="flex flex-col items-center gap-1">
+                              <div
+                                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                                  wizardStep > i + 1
+                                    ? "bg-primary text-primary-foreground"
+                                    : wizardStep === i + 1
+                                    ? "border-2 border-primary text-primary"
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {wizardStep > i + 1 ? <CheckCircle className="h-4 w-4" /> : i + 1}
+                              </div>
+                              <span className="hidden sm:block text-[11px] text-muted-foreground whitespace-nowrap">
+                                {label}
+                              </span>
+                            </div>
+                            {i < 3 && (
+                              <div
+                                className={`flex-1 h-0.5 mx-2 ${
+                                  wizardStep > i + 1 ? "bg-primary" : "bg-muted"
+                                }`}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
 
-                  {/* CTA Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('event')}
-                      className="flex-1 py-3.5 bg-cyan-600 hover:bg-cyan-500
-                                 text-white font-bold rounded-xl transition-colors
-                                 text-sm"
-                    >
-                      📅 Book Mobile Recovery Unit
-                    </button>
+                      {wizardError && (
+                        <div className="mb-6 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+                          {wizardError}
+                        </div>
+                      )}
 
-                    <a
-                      href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi! I want to know more about CryoRevive mobile recovery for my group.')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 py-3.5 border border-white/20
-                                 hover:border-white/40 hover:bg-white/5
-                                 text-white font-semibold rounded-xl
-                                 transition-colors text-sm text-center"
-                    >
-                      💬 Ask on WhatsApp
-                    </a>
-                  </div>
+                      {/* Step 1 — Select Service */}
+                      {wizardStep === 1 && (
+                        <div className="space-y-6">
+                          <h2 className="text-xl font-display font-bold">Select a Service</h2>
+                          {pricesLoading ? (
+                            <div className="flex justify-center py-12">
+                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : (
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              {centreServices.map((service) => {
+                                const Icon = CENTRE_ICONS[service.serviceType] ?? Snowflake;
+                                const live = getServicePrice(livePrices, service.serviceType);
+                                if (!live) return null;
+                                return (
+                                  <button
+                                    key={service.id}
+                                    type="button"
+                                    onClick={() => setSelectedService(service.serviceType)}
+                                    className={`p-4 border-2 rounded-sm text-left transition-all ${
+                                      selectedService === service.serviceType
+                                        ? "border-primary bg-primary/5"
+                                        : "border-border hover:border-primary/50"
+                                    }`}
+                                  >
+                                    <Icon
+                                      className={`h-7 w-7 mb-2 ${
+                                        selectedService === service.serviceType
+                                          ? "text-primary"
+                                          : "text-muted-foreground"
+                                      }`}
+                                    />
+                                    <h3 className="font-display font-bold">{service.name}</h3>
+                                    <p className="text-xs text-muted-foreground mb-1">{live.duration}</p>
+                                    <p className="text-lg font-bold text-primary">{formatPrice(live.price)}</p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <Button
+                            type="button"
+                            size="lg"
+                            className="w-full"
+                            disabled={!selectedService}
+                            onClick={() => setWizardStep(2)}
+                          >
+                            Continue
+                          </Button>
+                        </div>
+                      )}
 
-                  {/* Studio opening teaser */}
-                  <p className="text-gray-600 text-xs mt-6">
-                    🧊 Dedicated recovery centre opening soon in Delhi NCR
-                  </p>
-                </div>
+                      {/* Step 2 — Date & Time */}
+                      {wizardStep === 2 && (
+                        <div className="space-y-6">
+                          <h2 className="text-xl font-display font-bold">Select Date &amp; Time</h2>
+                          <div className="space-y-2">
+                            <Label htmlFor="centreDate">Session Date *</Label>
+                            <Input
+                              id="centreDate"
+                              type="date"
+                              value={selectedDate}
+                              onChange={(e) => setSelectedDate(e.target.value)}
+                              min={minCentreDateStr}
+                              max={maxCentreDateStr}
+                              className="bg-background border-border"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Available Time Slots *</Label>
+                            {!selectedDate ? (
+                              <p className="text-sm text-muted-foreground">Pick a date to see available slots.</p>
+                            ) : slotsLoading ? (
+                              <div className="flex justify-center py-6">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                              </div>
+                            ) : availableSlots.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No slots available on this date. Please try another date.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                {availableSlots.map((slot) => (
+                                  <button
+                                    key={slot}
+                                    type="button"
+                                    onClick={() => setSelectedTimeSlot(slot)}
+                                    className={`py-2 px-2 rounded-sm border text-sm font-semibold transition-colors ${
+                                      selectedTimeSlot === slot
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "border-border hover:border-primary/50"
+                                    }`}
+                                  >
+                                    {formatSlotLabel(slot)}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-3">
+                            <Button type="button" variant="outline" onClick={() => setWizardStep(1)}>
+                              <ArrowLeft className="h-4 w-4" /> Back
+                            </Button>
+                            <Button
+                              type="button"
+                              size="lg"
+                              className="flex-1"
+                              disabled={!selectedDate || !selectedTimeSlot}
+                              onClick={() => setWizardStep(3)}
+                            >
+                              Continue
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 3 — Your Details */}
+                      {wizardStep === 3 && (
+                        <div className="space-y-6">
+                          <h2 className="text-xl font-display font-bold">Your Details</h2>
+
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="fullName">Full Name *</Label>
+                              <Input
+                                id="fullName"
+                                value={details.full_name}
+                                onChange={(e) => setDetails((p) => ({ ...p, full_name: e.target.value }))}
+                                className="bg-background border-border"
+                                required
+                              />
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="mobile">Mobile Number *</Label>
+                                <Input
+                                  id="mobile"
+                                  type="tel"
+                                  value={details.mobile}
+                                  onChange={(e) => setDetails((p) => ({ ...p, mobile: e.target.value }))}
+                                  className="bg-background border-border"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="detailsEmail">Email *</Label>
+                                <Input
+                                  id="detailsEmail"
+                                  type="email"
+                                  value={details.email}
+                                  onChange={(e) => setDetails((p) => ({ ...p, email: e.target.value }))}
+                                  className="bg-background border-border"
+                                  required
+                                />
+                              </div>
+                            </div>
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="age">Age *</Label>
+                                <Input
+                                  id="age"
+                                  type="number"
+                                  min="1"
+                                  value={details.age}
+                                  onChange={(e) => setDetails((p) => ({ ...p, age: e.target.value }))}
+                                  className="bg-background border-border"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Gender *</Label>
+                                <RadioGroup
+                                  className="flex gap-4 pt-2"
+                                  value={details.gender}
+                                  onValueChange={(v) =>
+                                    setDetails((p) => ({ ...p, gender: v as BookingDetails["gender"] }))
+                                  }
+                                >
+                                  {["Male", "Female", "Other"].map((g) => (
+                                    <div key={g} className="flex items-center gap-2">
+                                      <RadioGroupItem value={g} id={`gender-${g}`} />
+                                      <Label htmlFor={`gender-${g}`} className="font-normal cursor-pointer">
+                                        {g}
+                                      </Label>
+                                    </div>
+                                  ))}
+                                </RadioGroup>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="address">Address (Optional)</Label>
+                              <Input
+                                id="address"
+                                value={details.address}
+                                onChange={(e) => setDetails((p) => ({ ...p, address: e.target.value }))}
+                                className="bg-background border-border"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Health Screening */}
+                          <div>
+                            <h3 className="font-bold mb-3">
+                              Health Screening
+                              <span className="text-destructive text-xs ml-2 font-normal">
+                                Please disclose all
+                              </span>
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3">
+                              {HEALTH_ITEMS.map((item) => (
+                                <label key={item.key} className="flex items-center gap-2 cursor-pointer">
+                                  <Checkbox
+                                    checked={details[item.key] as boolean}
+                                    onCheckedChange={(checked) =>
+                                      setDetails((p) => ({ ...p, [item.key]: checked === true }))
+                                    }
+                                  />
+                                  <span className="text-sm text-muted-foreground">{item.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <Input
+                              placeholder="Any other medical condition…"
+                              value={details.health_other}
+                              onChange={(e) => setDetails((p) => ({ ...p, health_other: e.target.value }))}
+                              className="mt-3 bg-background border-border"
+                            />
+                          </div>
+
+                          {/* Goal */}
+                          <div className="space-y-2">
+                            <Label>Primary Goal</Label>
+                            <Select
+                              value={details.primary_goal}
+                              onValueChange={(v) => setDetails((p) => ({ ...p, primary_goal: v }))}
+                            >
+                              <SelectTrigger className="bg-background border-border">
+                                <SelectValue placeholder="Select a goal" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {GOALS.map((g) => (
+                                  <SelectItem key={g} value={g}>
+                                    {g}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Emergency Contact */}
+                          <div>
+                            <h3 className="font-bold mb-3">Emergency Contact</h3>
+                            <div className="grid sm:grid-cols-3 gap-3">
+                              <Input
+                                placeholder="Name"
+                                value={details.emergency_name}
+                                onChange={(e) => setDetails((p) => ({ ...p, emergency_name: e.target.value }))}
+                                className="bg-background border-border"
+                              />
+                              <Input
+                                placeholder="Phone"
+                                value={details.emergency_phone}
+                                onChange={(e) => setDetails((p) => ({ ...p, emergency_phone: e.target.value }))}
+                                className="bg-background border-border"
+                              />
+                              <Input
+                                placeholder="Relation"
+                                value={details.emergency_relation}
+                                onChange={(e) =>
+                                  setDetails((p) => ({ ...p, emergency_relation: e.target.value }))
+                                }
+                                className="bg-background border-border"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Referral */}
+                          <div className="grid sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>How did you hear about us?</Label>
+                              <Select
+                                value={details.referral_source}
+                                onValueChange={(v) => setDetails((p) => ({ ...p, referral_source: v }))}
+                              >
+                                <SelectTrigger className="bg-background border-border">
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {REFERRAL_SOURCES.map((r) => (
+                                    <SelectItem key={r} value={r}>
+                                      {r}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="referralCode">Referral Code (Optional)</Label>
+                              <Input
+                                id="referralCode"
+                                value={details.referral_code}
+                                onChange={(e) => setDetails((p) => ({ ...p, referral_code: e.target.value }))}
+                                className="bg-background border-border"
+                              />
+                            </div>
+                          </div>
+
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              checked={details.first_time}
+                              onCheckedChange={(checked) =>
+                                setDetails((p) => ({ ...p, first_time: checked === true }))
+                              }
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              This is my first time at CryoRevive
+                            </span>
+                          </label>
+
+                          {/* Consent */}
+                          <div className="bg-muted/40 border border-border rounded-xl p-4">
+                            <p className="text-muted-foreground text-xs leading-relaxed mb-3">
+                              I confirm that the information provided is accurate. I understand that cold
+                              plunge, sauna, and contrast therapy involve exposure to extreme temperatures
+                              and may not be suitable for everyone. I voluntarily participate and accept
+                              responsibility for any risks associated.
+                            </p>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <Checkbox
+                                checked={details.consent_accepted}
+                                onCheckedChange={(checked) =>
+                                  setDetails((p) => ({ ...p, consent_accepted: checked === true }))
+                                }
+                              />
+                              <span className="text-sm font-medium">
+                                I agree to the Terms &amp; Conditions and Liability Waiver
+                              </span>
+                            </label>
+                          </div>
+
+                          <div className="flex gap-3">
+                            <Button type="button" variant="outline" onClick={() => setWizardStep(2)}>
+                              <ArrowLeft className="h-4 w-4" /> Back
+                            </Button>
+                            <Button
+                              type="button"
+                              size="lg"
+                              className="flex-1"
+                              disabled={!canContinueStep3}
+                              onClick={() => setWizardStep(4)}
+                            >
+                              Continue to Payment
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 4 — Pay */}
+                      {wizardStep === 4 && selectedServicePrice && (
+                        <div className="space-y-6">
+                          <h2 className="text-xl font-display font-bold">Review &amp; Pay</h2>
+                          <div className="bg-muted/40 rounded-2xl p-6 space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Service</span>
+                              <span className="font-bold">{getService(selectedService)?.name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Date</span>
+                              <span className="font-bold">
+                                {format(new Date(selectedDate + "T00:00:00"), "EEEE, dd MMMM yyyy")}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Time</span>
+                              <span className="font-bold">{formatSlotLabel(selectedTimeSlot)}</span>
+                            </div>
+                            <div className="flex justify-between pt-3 border-t border-border">
+                              <span className="font-bold">Total Amount</span>
+                              <span className="text-lg font-bold text-primary">
+                                {formatPrice(selectedServicePrice.price)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex gap-3">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setWizardStep(3)}
+                              disabled={isProcessing}
+                            >
+                              <ArrowLeft className="h-4 w-4" /> Back
+                            </Button>
+                            <Button
+                              type="button"
+                              size="lg"
+                              className="flex-1"
+                              disabled={isProcessing}
+                              onClick={handlePayment}
+                            >
+                              {isProcessing ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin" /> Processing...
+                                </>
+                              ) : (
+                                `Pay ${formatPrice(selectedServicePrice.price)}`
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             )}
 

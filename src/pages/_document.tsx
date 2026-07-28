@@ -30,6 +30,8 @@ export default function Document() {
           async
           data-softgen-monitoring="true"
         />
+        {/* Razorpay Checkout — used by the in-centre booking payment flow */}
+        <script src="https://checkout.razorpay.com/v1/checkout.js" async />
       </Head>
       <body
         className={cn(
