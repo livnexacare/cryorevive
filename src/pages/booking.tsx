@@ -343,7 +343,12 @@ export default function Booking() {
           }
         },
         modal: {
-          ondismiss: () => setIsProcessing(false),
+          ondismiss: () => {
+            setIsProcessing(false);
+            fetch(`${API_URL}/api/bookings/${booking.id}/cancel-unpaid`, {
+              method: "POST",
+            }).catch(() => {});
+          },
         },
       });
       rzp.open();

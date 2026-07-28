@@ -93,7 +93,7 @@ async def get_slots(
 @router.get("/bookings")
 async def list_bookings(
     status: Optional[str] = Query(None),
-    date: Optional[str] = Query(None),
+    date: Optional[Date] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     x_admin_key: str = Header(default=""),
 ):
@@ -168,6 +168,22 @@ async def update_booking_status(
         asyncio.create_task(send_booking_confirmed(updated))
 
     return updated
+
+
+@router.post("/bookings/{booking_id}/cancel-unpaid")
+async def cancel_unpaid_booking(booking_id: str):
+    """Self-service cancel for the customer's own just-created booking when the
+    Razorpay checkout is closed without completing payment — otherwise the slot
+    stays reserved indefinitely. No admin key required: this can only ever
+    affect a booking still in the pending+unpaid state it starts in, and
+    booking_id is an unguessable UUID, so it can't be used to touch anyone
+    else's confirmed or paid booking."""
+    result = await db_execute(
+        """UPDATE bookings SET status = 'cancelled'
+           WHERE id = $1 AND status = 'pending' AND payment_status = 'unpaid'""",
+        booking_id,
+    )
+    return {"cancelled": result == "UPDATE 1"}
 
 
 @router.post("/test-email")
