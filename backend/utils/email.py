@@ -193,7 +193,7 @@ def _customer_booking_html(b: dict) -> str:
       <p style="color:#475569;font-size:12px;text-align:center;margin:0;">
         CryoRevive &mdash; Recover Harder. Come Back Stronger.<br>
         <a href="https://cryorevive.in" style="color:#06b6d4;">cryorevive.in</a> |
-        +91 09891430920
+        +91 8595850920
       </p>
     </div>"""
 
@@ -282,7 +282,7 @@ def _support_autoreply_html(c: dict) -> str:
       <div style="background:#0f172a;border:1px solid #1e40af;border-radius:8px;
                   padding:16px;margin-bottom:20px;">
         <p style="color:#93c5fd;font-size:14px;margin:0;line-height:1.6;">
-          &#128241; For urgent queries WhatsApp us at +91 09891430920<br>
+          &#128241; For urgent queries WhatsApp us at +91 8595850920<br>
           &#127760; Visit us at
           <a href="https://cryorevive.in" style="color:#22d3ee;">cryorevive.in</a>
         </p>

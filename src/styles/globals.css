@@ -106,3 +106,18 @@ body {
 .animate-slide-in-right {
   animation: slideInRight 0.25s ease-out forwards;
 }
+
+@media print {
+  .no-print { display: none !important; }
+  .print-form { display: block !important; }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  @page {
+    margin: 15mm;
+    size: A4;
+  }
+}

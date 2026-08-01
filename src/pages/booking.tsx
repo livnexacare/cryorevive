@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
-import { format, addDays, addHours, isBefore, isToday } from "date-fns";
+import { format, addHours, addDays, isBefore } from "date-fns";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
@@ -8,75 +8,50 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import { Snowflake, Flame, Activity, Zap, CheckCircle, ChevronLeft } from "lucide-react";
-import { SERVICES } from "@/lib/services";
-import type { Service } from "@/lib/services";
-import type { ServicePrice } from "@/lib/pricing";
-
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  CheckCircle,
+  Snowflake,
+  Flame,
+  Repeat,
+  Thermometer,
+  Activity,
+  Sparkles,
+  Loader2,
+  ArrowLeft,
+} from "lucide-react";
+import { API_URL } from "@/lib/api";
+import { SERVICES, getService } from "@/lib/services";
+import { fetchLivePrices, getServicePrice, formatPrice, type ServicePrice } from "@/lib/pricing";
 const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "918595850920";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-const SERVICE_ICONS: Record<string, typeof Snowflake> = {
+const CENTRE_ICONS: Record<string, typeof Snowflake> = {
   ice_bath: Snowflake,
   steam_sauna: Flame,
-  contrast_therapy: Activity,
-  cryo_chamber: Zap,
+  contrast_therapy: Repeat,
+  cryo_chamber: Thermometer,
+  compression_therapy: Activity,
+  full_body_recovery: Sparkles,
 };
 
-const MASTER_SLOTS = [
-  "9:00 AM", "10:00 AM", "11:00 AM", "12:00 PM",
-  "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM", "6:00 PM",
-];
-
-function getAvailableTimeSlots(date: Date): string[] {
-  if (!isToday(date)) return MASTER_SLOTS;
-  const cutoff = addHours(new Date(), 2);
-  return MASTER_SLOTS.filter((slot) => {
-    const [time, period] = slot.split(" ");
-    const [h, m] = time.split(":");
-    let hour = parseInt(h, 10);
-    const min = parseInt(m, 10) || 0;
-    if (period === "PM" && hour !== 12) hour += 12;
-    if (period === "AM" && hour === 12) hour = 0;
-    const slotDate = new Date(date);
-    slotDate.setHours(hour, min, 0, 0);
-    return slotDate > cutoff;
-  });
-}
-
-const EVENT_TYPES = [
-  "Marathon / Running Event",
-  "Sports Meet",
-  "Gym Session",
-  "Corporate Wellness",
-  "Team Training Camp",
-  "Other",
-];
-
-const GOALS = ["Recovery", "Muscle Soreness", "Fat Loss", "General Wellness", "Athletic Performance", "Other"];
+const GOALS = ["Recovery", "Muscle Soreness", "Fat Loss", "Injury Rehab", "General Wellness", "Other"];
 const REFERRAL_SOURCES = ["Friend", "Instagram", "Google", "Gym", "Event", "Other"];
-
-const HEALTH_ITEMS: { key: keyof BookingDetails; label: string }[] = [
-  { key: "health_high_bp", label: "High Blood Pressure" },
-  { key: "health_seizures", label: "Seizures" },
-  { key: "health_heart", label: "Heart Condition" },
-  { key: "health_diabetes", label: "Diabetes" },
-  { key: "health_asthma", label: "Asthma" },
-  { key: "health_pregnancy", label: "Pregnancy" },
-];
-
-const STEP_LABELS = ["Service", "Date & Time", "Details"];
-
-type Tab = "incentre" | "event";
-type Step = 1 | 2 | 3 | "success";
 
 interface BookingDetails {
   full_name: string;
   mobile: string;
   email: string;
   age: string;
-  gender: "" | "Male" | "Female" | "Other";
+  gender: "Male" | "Female" | "Other" | "";
   address: string;
   health_high_bp: boolean;
   health_heart: boolean;
@@ -119,53 +94,30 @@ const EMPTY_DETAILS: BookingDetails = {
   consent_accepted: false,
 };
 
-const today = new Date();
-today.setHours(0, 0, 0, 0);
-const maxDate = addDays(today, 30);
+const HEALTH_ITEMS: Array<{ key: keyof BookingDetails; label: string }> = [
+  { key: "health_high_bp", label: "High Blood Pressure" },
+  { key: "health_seizures", label: "Seizures" },
+  { key: "health_heart", label: "Heart Condition" },
+  { key: "health_diabetes", label: "Diabetes" },
+  { key: "health_asthma", label: "Asthma" },
+  { key: "health_pregnancy", label: "Pregnancy" },
+];
 
-export async function getServerSideProps() {
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com"}/api/pricing/services`
-    );
-    const prices: ServicePrice[] = await res.json();
-    return { props: { prices: Array.isArray(prices) ? prices : [] } };
-  } catch {
-    return { props: { prices: [] } };
-  }
-}
+const EVENT_TYPES = [
+  "Marathon / Running Event",
+  "Sports Meet",
+  "Gym Session",
+  "Corporate Wellness",
+  "Team Training Camp",
+  "Other",
+];
 
-export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
+type Tab = "incentre" | "event";
+
+export default function Booking() {
   const router = useRouter();
 
-  // Merge live prices with SERVICES (for description + fallback)
-  const services = useMemo<Service[]>(() => {
-    const active = prices.filter((p) => p.is_active);
-    if (active.length === 0) return SERVICES;
-    return active.map((p) => {
-      const fallback = SERVICES.find((s) => s.serviceType === p.service_type);
-      return {
-        id: p.service_type,
-        name: p.name,
-        duration: p.duration,
-        price: p.price,
-        priceDisplay: `₹${p.price.toLocaleString("en-IN")}`,
-        description: fallback?.description ?? "",
-        serviceType: p.service_type,
-      };
-    });
-  }, [prices]);
-
   const [activeTab, setActiveTab] = useState<Tab>("incentre");
-
-  // In-centre wizard state
-  const [step, setStep] = useState<Step>(1);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState("");
-  const [details, setDetails] = useState<BookingDetails>(EMPTY_DETAILS);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
 
   // Event form state
   const [eventSuccess, setEventSuccess] = useState(false);
@@ -181,50 +133,86 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
   const [requirements, setRequirements] = useState("");
   const [eventDateError, setEventDateError] = useState("");
 
-  const availableSlots = selectedDate ? getAvailableTimeSlots(selectedDate) : MASTER_SLOTS;
   const minEventDateStr = format(addHours(new Date(), 48), "yyyy-MM-dd");
 
+  // In-centre wizard state
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [livePrices, setLivePrices] = useState<ServicePrice[]>([]);
+  const [pricesLoading, setPricesLoading] = useState(true);
+  const [selectedService, setSelectedService] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState("");
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [details, setDetails] = useState<BookingDetails>(EMPTY_DETAILS);
+  const [submitting, setSubmitting] = useState(false);
+  const [wizardError, setWizardError] = useState("");
+  const [bookingSent, setBookingSent] = useState(false);
+  const [confirmedBooking, setConfirmedBooking] = useState<{
+    serviceName: string;
+    date: string;
+    timeSlot: string;
+    amount: number;
+  } | null>(null);
+
+  const minCentreDateStr = format(new Date(), "yyyy-MM-dd");
+  const maxCentreDateStr = format(addDays(new Date(), 90), "yyyy-MM-dd");
+  const centreServices = SERVICES.filter((s) => s.serviceType !== "mobile_unit");
+  const selectedServicePrice = getServicePrice(livePrices, selectedService);
+
   useEffect(() => {
-    const { service, tab } = router.query;
-    if (tab === "event") {
-      setActiveTab("event");
-    }
-    if (typeof service === "string") {
-      const found = services.find((s) => s.serviceType === service);
-      if (found) {
-        setActiveTab("incentre");
-        setSelectedService(found);
-        setStep(2);
-      }
-    }
-  }, [router.query, services]);
+    fetchLivePrices()
+      .then(setLivePrices)
+      .finally(() => setPricesLoading(false));
+  }, []);
 
-  const handleTabChange = (tab: Tab) => {
-    setActiveTab(tab);
-    if (tab === "incentre") {
-      setStep(1);
-      setSelectedService(null);
-      setSelectedDate(undefined);
-      setSelectedTimeSlot("");
+  const loadSlots = useCallback(async () => {
+    if (!selectedDate || !selectedService) return;
+    setSlotsLoading(true);
+    setSelectedTimeSlot("");
+    try {
+      const res = await fetch(
+        `${API_URL}/api/slots?date=${selectedDate}&service_type=${selectedService}`
+      );
+      const data = await res.json();
+      setAvailableSlots(res.ok ? data.available_slots ?? [] : []);
+    } catch {
+      setAvailableSlots([]);
+    } finally {
+      setSlotsLoading(false);
     }
-  };
+  }, [selectedDate, selectedService]);
 
-  const handleServiceSelect = (service: Service) => {
-    setSelectedService(service);
-    setStep(2);
-  };
+  useEffect(() => {
+    loadSlots();
+  }, [loadSlots]);
 
-  const setDetail = <K extends keyof BookingDetails>(key: K, value: BookingDetails[K]) => {
-    setDetails((prev) => ({ ...prev, [key]: value }));
+  const formatSlotLabel = (slot: string) => {
+    const [h, m] = slot.split(":").map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return format(d, "h:mm a");
   };
 
   const detailsValid =
-    details.full_name.trim().length > 0 &&
-    details.mobile.replace(/\s+/g, "").length >= 10 &&
+    details.full_name.trim().length > 1 &&
+    details.mobile.replace("+91", "").trim().length >= 10 &&
     details.consent_accepted;
 
+  const resetWizard = () => {
+    setWizardStep(1);
+    setSelectedService("");
+    setSelectedDate("");
+    setSelectedTimeSlot("");
+    setDetails(EMPTY_DETAILS);
+    setWizardError("");
+    setBookingSent(false);
+    setConfirmedBooking(null);
+  };
+
   const buildWhatsAppMessage = () => {
-    if (!selectedService || !selectedDate) return "";
+    const service = getService(selectedService);
+    if (!service || !selectedDate) return "";
 
     const healthConditions = [
       details.health_high_bp && "High BP",
@@ -241,14 +229,12 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
     const lines: string[] = [
       "*New CryoRevive Booking Request*",
       "",
-      `*Service:* ${selectedService.name} (${selectedService.duration})`,
-      `*Date:* ${format(selectedDate, "EEEE, dd MMMM yyyy")}`,
-      `*Time:* ${selectedTimeSlot}`,
-      `*Price:* ${selectedService.priceDisplay}`,
-      "",
-      `*Name:* ${details.full_name}`,
-      `*WhatsApp:* ${details.mobile}`,
+      `*Service:* ${service.name}`,
+      `*Date:* ${format(new Date(selectedDate + "T00:00:00"), "EEEE, dd MMMM yyyy")}`,
+      `*Time:* ${formatSlotLabel(selectedTimeSlot)}`,
     ];
+    if (selectedServicePrice) lines.push(`*Price:* ${formatPrice(selectedServicePrice.price)}`);
+    lines.push("", `*Name:* ${details.full_name}`, `*WhatsApp:* ${details.mobile}`);
     if (details.email) lines.push(`*Email:* ${details.email}`);
     if (details.age) lines.push(`*Age:* ${details.age}`);
     if (details.gender) lines.push(`*Gender:* ${details.gender}`);
@@ -267,18 +253,11 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
   };
 
   const handleSubmit = async () => {
-    if (!selectedService || !selectedDate || !selectedTimeSlot) return;
-
-    if (!details.consent_accepted) {
-      setSubmitError("Please accept the Terms & Conditions and Liability Waiver");
-      return;
-    }
     if (!detailsValid) {
-      setSubmitError("Please fill in all required fields");
+      setWizardError("Please fill in all required fields");
       return;
     }
-
-    setSubmitError("");
+    setWizardError("");
     setSubmitting(true);
 
     // Save to backend in the background — WhatsApp is the primary confirmation path
@@ -286,14 +265,14 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: details.full_name,
-        email: details.email || `${details.mobile.replace(/\s+/g, "")}@whatsapp.booking`,
-        phone: details.mobile,
-        service_type: selectedService.serviceType,
-        date: format(selectedDate, "yyyy-MM-dd"),
+        name: details.full_name.trim(),
+        email: details.email.trim() || `${details.mobile.replace(/\s+/g, "")}@whatsapp.booking`,
+        phone: details.mobile.trim(),
+        service_type: selectedService,
+        date: selectedDate,
         time_slot: selectedTimeSlot,
         notes: JSON.stringify({
-          age: details.age,
+          age: details.age ? Number(details.age) : undefined,
           gender: details.gender,
           address: details.address,
           health: {
@@ -319,21 +298,32 @@ export default function Booking({ prices = [] }: { prices: ServicePrice[] }) {
     }).catch(() => {});
 
     const message = buildWhatsAppMessage();
+    setConfirmedBooking({
+      serviceName: getService(selectedService)?.name ?? selectedService,
+      date: selectedDate,
+      timeSlot: selectedTimeSlot,
+      amount: selectedServicePrice?.price ?? 0,
+    });
     setSubmitting(false);
-    setStep("success");
+    setBookingSent(true);
 
     setTimeout(() => {
       window.open(`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(message)}`, "_blank");
     }, 500);
   };
 
-  const handleBookAnother = () => {
-    setStep(1);
-    setSelectedService(null);
-    setSelectedDate(undefined);
-    setSelectedTimeSlot("");
-    setDetails(EMPTY_DETAILS);
-    setSubmitError("");
+  useEffect(() => {
+    const { tab, service } = router.query;
+    if (tab === "event") {
+      setActiveTab("event");
+    }
+    if (typeof service === "string" && getService(service)) {
+      setSelectedService(service);
+    }
+  }, [router.query]);
+
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
   };
 
   const handleEventSubmit = (e: React.FormEvent) => {
@@ -366,8 +356,6 @@ Please contact me to confirm. Thank you!`.trim();
     window.open(`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(message)}`, "_blank");
     setEventSuccess(true);
   };
-
-  const currentStepNum = typeof step === "number" ? step : 4;
 
   return (
     <>
@@ -426,499 +414,461 @@ Please contact me to confirm. Thank you!`.trim();
 
             {/* ══ In-Centre Tab ══ */}
             {activeTab === "incentre" && (
-              <div>
-                {step !== "success" && (
-                  <div className="flex items-center justify-center mb-8 md:mb-12">
-                    {STEP_LABELS.map((label, i) => {
-                      const num = i + 1;
-                      const done = currentStepNum > num;
-                      const active = currentStepNum === num;
-                      return (
-                        <div key={num} className="flex items-center">
-                          <div className="flex flex-col items-center">
-                            <div
-                              className={`w-8 h-8 md:w-9 md:h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                                done
-                                  ? "bg-primary text-primary-foreground"
-                                  : active
-                                  ? "bg-primary text-primary-foreground ring-4 ring-primary/25"
-                                  : "bg-muted text-muted-foreground"
-                              }`}
-                            >
-                              {done ? "✓" : num}
-                            </div>
-                            <span
-                              className={`text-xs mt-1.5 font-medium whitespace-nowrap ${
-                                active ? "text-foreground" : "text-muted-foreground"
-                              }`}
-                            >
-                              {label}
-                            </span>
-                          </div>
-                          {i < STEP_LABELS.length - 1 && (
-                            <div
-                              className={`h-0.5 w-8 sm:w-16 md:w-24 mx-2 mb-5 transition-colors ${
-                                done ? "bg-primary" : "bg-muted"
-                              }`}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Step 1: Service */}
-                {step === 1 && (
-                  <div>
-                    <h2 className="text-xl md:text-2xl font-display font-bold mb-5 md:mb-8 text-center">
-                      Choose Your Service
-                    </h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
-                      {services.map((service) => {
-                        const Icon = SERVICE_ICONS[service.serviceType] ?? Snowflake;
-                        return (
-                          <button
-                            key={service.id}
-                            type="button"
-                            onClick={() => handleServiceSelect(service)}
-                            className="p-4 border-2 border-border hover:border-primary rounded-2xl transition-all text-center group cursor-pointer"
-                          >
-                            <Icon className="h-8 w-8 mx-auto mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
-                            <h3 className="font-display font-bold text-sm mb-1">{service.name}</h3>
-                            <p className="text-xs text-muted-foreground">{service.duration}</p>
-                            <p className="text-sm font-bold text-primary my-1">{service.priceDisplay}</p>
-                            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                              {service.description}
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 2: Date & Time */}
-                {step === 2 && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setStep(1)}
-                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                      Back
-                    </button>
-
-                    <h2 className="text-2xl font-display font-bold mb-1 text-center">
-                      Select Date &amp; Time
-                    </h2>
-                    {selectedService && (
-                      <p className="text-center text-muted-foreground mb-8 text-sm">
-                        {selectedService.name} &middot; {selectedService.duration}
+              <div className="max-w-2xl mx-auto">
+                {bookingSent && confirmedBooking ? (
+                  <Card className="bg-card border-border">
+                    <CardContent className="py-12 px-6 text-center">
+                      <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                      <h2 className="text-2xl font-display font-bold mb-2">Request Sent!</h2>
+                      <p className="text-muted-foreground mb-6">
+                        Your booking request has been sent to our team via WhatsApp.
+                        <br />
+                        We&apos;ll confirm your slot and share payment details shortly.
                       </p>
-                    )}
-
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <Card className="bg-card border-border">
-                        <CardContent className="p-4 flex justify-center">
-                          <Calendar
-                            mode="single"
-                            selected={selectedDate}
-                            onSelect={(d) => { setSelectedDate(d); setSelectedTimeSlot(""); }}
-                            disabled={(date) => isBefore(date, today) || date > maxDate}
-                            initialFocus
-                          />
-                        </CardContent>
-                      </Card>
-
-                      <div className="space-y-3">
-                        <h3 className="font-semibold text-sm">
-                          {selectedDate
-                            ? `Available times for ${format(selectedDate, "EEE, d MMM")}`
-                            : "Pick a date to see available times"}
-                        </h3>
-                        <div className="grid grid-cols-3 gap-2">
-                          {availableSlots.map((slot) => (
-                            <button
-                              key={slot}
-                              type="button"
-                              disabled={!selectedDate}
-                              onClick={() => setSelectedTimeSlot(slot)}
-                              className={`py-2.5 px-2 text-sm rounded-xl border-2 transition-all disabled:opacity-35 disabled:cursor-not-allowed ${
-                                selectedTimeSlot === slot
-                                  ? "border-primary bg-primary/10 text-primary font-semibold"
-                                  : "border-border hover:border-primary/50"
-                              }`}
-                            >
-                              {slot}
-                            </button>
-                          ))}
+                      <div className="bg-muted/40 rounded-2xl p-6 text-left mb-6 space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Service</span>
+                          <span className="font-bold">{confirmedBooking.serviceName}</span>
                         </div>
-                        {selectedDate && isToday(selectedDate) && availableSlots.length === 0 && (
-                          <p className="text-amber-400 text-sm text-center py-4">
-                            No slots available today. Please select a future date or call us at +91 8595850920 for same-day bookings.
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground pt-1">
-                          Subject to availability — we&apos;ll confirm via WhatsApp
-                        </p>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Date</span>
+                          <span className="font-bold">
+                            {format(new Date(confirmedBooking.date + "T00:00:00"), "EEEE, dd MMMM yyyy")}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Time</span>
+                          <span className="font-bold">{formatSlotLabel(confirmedBooking.timeSlot)}</span>
+                        </div>
+                        <div className="flex justify-between pt-3 border-t border-border">
+                          <span className="text-muted-foreground">Amount</span>
+                          <span className="font-bold text-primary">
+                            {formatPrice(confirmedBooking.amount)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="mt-6 md:mt-8">
-                      <Button
-                        type="button"
-                        onClick={() => setStep(3)}
-                        disabled={!selectedDate || !selectedTimeSlot}
-                        size="lg"
-                        className="w-full md:w-auto md:px-12 py-3 text-sm rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                      <p className="text-xs text-muted-foreground mb-4">💬 Didn&apos;t open WhatsApp?</p>
+                      <a
+                        href={`https://wa.me/${ADMIN_WA}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold rounded-xl transition-colors text-sm"
                       >
-                        Next: Your Details
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                        Open WhatsApp
+                      </a>
+                      <div className="mt-4">
+                        <Button type="button" variant="outline" onClick={resetWizard}>
+                          Book Another Session
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="bg-card border-border">
+                    <CardContent className="p-4 sm:p-8">
+                      {/* Step indicator */}
+                      <div className="flex items-center mb-8">
+                        {["Service", "Date & Time", "Details"].map((label, i) => (
+                          <div key={label} className="flex items-center flex-1 last:flex-none">
+                            <div className="flex flex-col items-center gap-1">
+                              <div
+                                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                                  wizardStep > i + 1
+                                    ? "bg-primary text-primary-foreground"
+                                    : wizardStep === i + 1
+                                    ? "border-2 border-primary text-primary"
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {wizardStep > i + 1 ? <CheckCircle className="h-4 w-4" /> : i + 1}
+                              </div>
+                              <span className="hidden sm:block text-[11px] text-muted-foreground whitespace-nowrap">
+                                {label}
+                              </span>
+                            </div>
+                            {i < 2 && (
+                              <div
+                                className={`flex-1 h-0.5 mx-2 ${
+                                  wizardStep > i + 1 ? "bg-primary" : "bg-muted"
+                                }`}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
 
-                {/* Step 3: Details + Payment */}
-                {step === 3 && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setStep(2)}
-                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                      Back
-                    </button>
+                      {wizardError && (
+                        <div className="mb-6 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+                          {wizardError}
+                        </div>
+                      )}
 
-                    <h2 className="text-2xl font-display font-bold mb-1 text-center">
-                      Your Details
-                    </h2>
-                    {selectedService && selectedDate && (
-                      <p className="text-center text-sm text-muted-foreground mb-8">
-                        {selectedService.name} &middot; {format(selectedDate, "d MMM yyyy")} &middot; {selectedTimeSlot}
-                      </p>
-                    )}
+                      {/* Step 1 — Select Service */}
+                      {wizardStep === 1 && (
+                        <div className="space-y-6">
+                          <h2 className="text-xl font-display font-bold">Select a Service</h2>
+                          {pricesLoading ? (
+                            <div className="flex justify-center py-12">
+                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : (
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              {centreServices.map((service) => {
+                                const Icon = CENTRE_ICONS[service.serviceType] ?? Snowflake;
+                                const live = getServicePrice(livePrices, service.serviceType);
+                                if (!live) return null;
+                                return (
+                                  <button
+                                    key={service.id}
+                                    type="button"
+                                    onClick={() => setSelectedService(service.serviceType)}
+                                    className={`p-4 border-2 rounded-sm text-left transition-all ${
+                                      selectedService === service.serviceType
+                                        ? "border-primary bg-primary/5"
+                                        : "border-border hover:border-primary/50"
+                                    }`}
+                                  >
+                                    <Icon
+                                      className={`h-7 w-7 mb-2 ${
+                                        selectedService === service.serviceType
+                                          ? "text-primary"
+                                          : "text-muted-foreground"
+                                      }`}
+                                    />
+                                    <h3 className="font-display font-bold">{service.name}</h3>
+                                    <p className="text-xs text-muted-foreground mb-1">{live.duration}</p>
+                                    <p className="text-lg font-bold text-primary">{formatPrice(live.price)}</p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <Button
+                            type="button"
+                            size="lg"
+                            className="w-full"
+                            disabled={!selectedService}
+                            onClick={() => setWizardStep(2)}
+                          >
+                            Continue
+                          </Button>
+                        </div>
+                      )}
 
-                    <Card className="bg-card border-border max-w-lg mx-auto">
-                      <CardContent className="p-6">
-                        <form
-                          onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
-                          className="space-y-6"
-                        >
-                          {/* Personal details */}
+                      {/* Step 2 — Date & Time */}
+                      {wizardStep === 2 && (
+                        <div className="space-y-6">
+                          <h2 className="text-xl font-display font-bold">Select Date &amp; Time</h2>
+                          <div className="space-y-2">
+                            <Label htmlFor="centreDate">Session Date *</Label>
+                            <Input
+                              id="centreDate"
+                              type="date"
+                              value={selectedDate}
+                              onChange={(e) => setSelectedDate(e.target.value)}
+                              min={minCentreDateStr}
+                              max={maxCentreDateStr}
+                              className="bg-background border-border"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Available Time Slots *</Label>
+                            {!selectedDate ? (
+                              <p className="text-sm text-muted-foreground">Pick a date to see available slots.</p>
+                            ) : slotsLoading ? (
+                              <div className="flex justify-center py-6">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                              </div>
+                            ) : availableSlots.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">
+                                No slots available on this date. Please try another date.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                {availableSlots.map((slot) => (
+                                  <button
+                                    key={slot}
+                                    type="button"
+                                    onClick={() => setSelectedTimeSlot(slot)}
+                                    className={`py-2 px-2 rounded-sm border text-sm font-semibold transition-colors ${
+                                      selectedTimeSlot === slot
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "border-border hover:border-primary/50"
+                                    }`}
+                                  >
+                                    {formatSlotLabel(slot)}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-3">
+                            <Button type="button" variant="outline" onClick={() => setWizardStep(1)}>
+                              <ArrowLeft className="h-4 w-4" /> Back
+                            </Button>
+                            <Button
+                              type="button"
+                              size="lg"
+                              className="flex-1"
+                              disabled={!selectedDate || !selectedTimeSlot}
+                              onClick={() => setWizardStep(3)}
+                            >
+                              Continue
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 3 — Your Details */}
+                      {wizardStep === 3 && (
+                        <div className="space-y-6">
+                          <h2 className="text-xl font-display font-bold">Your Details</h2>
+
                           <div className="space-y-4">
                             <div className="space-y-2">
-                              <label htmlFor="full_name" className="text-sm font-semibold text-foreground">
-                                Full Name *
-                              </label>
+                              <Label htmlFor="fullName">Full Name *</Label>
                               <Input
-                                id="full_name"
-                                type="text"
-                                placeholder="John Doe"
+                                id="fullName"
                                 value={details.full_name}
-                                onChange={(e) => setDetail("full_name", e.target.value)}
+                                onChange={(e) => setDetails((p) => ({ ...p, full_name: e.target.value }))}
                                 className="bg-background border-border"
                                 required
                               />
                             </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid sm:grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <label htmlFor="mobile" className="text-sm font-semibold text-foreground">
-                                  WhatsApp Number *
-                                </label>
+                                <Label htmlFor="mobile">WhatsApp Number *</Label>
                                 <Input
                                   id="mobile"
                                   type="tel"
-                                  placeholder="+91 98914 30920"
                                   value={details.mobile}
-                                  onChange={(e) => setDetail("mobile", e.target.value)}
+                                  onChange={(e) => setDetails((p) => ({ ...p, mobile: e.target.value }))}
                                   className="bg-background border-border"
                                   required
                                 />
                               </div>
                               <div className="space-y-2">
-                                <label htmlFor="email" className="text-sm font-semibold text-foreground">
-                                  Email (Optional)
-                                </label>
+                                <Label htmlFor="detailsEmail">Email (Optional)</Label>
                                 <Input
-                                  id="email"
+                                  id="detailsEmail"
                                   type="email"
-                                  placeholder="you@example.com"
                                   value={details.email}
-                                  onChange={(e) => setDetail("email", e.target.value)}
+                                  onChange={(e) => setDetails((p) => ({ ...p, email: e.target.value }))}
                                   className="bg-background border-border"
                                 />
                               </div>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid sm:grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <label htmlFor="age" className="text-sm font-semibold text-foreground">
-                                  Age (Optional)
-                                </label>
+                                <Label htmlFor="age">Age (Optional)</Label>
                                 <Input
                                   id="age"
                                   type="number"
-                                  min={1}
-                                  placeholder="28"
+                                  min="1"
                                   value={details.age}
-                                  onChange={(e) => setDetail("age", e.target.value)}
+                                  onChange={(e) => setDetails((p) => ({ ...p, age: e.target.value }))}
                                   className="bg-background border-border"
                                 />
                               </div>
                               <div className="space-y-2">
-                                <label htmlFor="gender" className="text-sm font-semibold text-foreground">
-                                  Gender (Optional)
-                                </label>
-                                <select
-                                  id="gender"
+                                <Label>Gender (Optional)</Label>
+                                <RadioGroup
+                                  className="flex gap-4 pt-2"
                                   value={details.gender}
-                                  onChange={(e) => setDetail("gender", e.target.value as BookingDetails["gender"])}
-                                  className="w-full h-10 px-3 py-2 text-sm bg-background border border-input rounded-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                  onValueChange={(v) =>
+                                    setDetails((p) => ({ ...p, gender: v as BookingDetails["gender"] }))
+                                  }
                                 >
-                                  <option value="" disabled>Select…</option>
-                                  <option value="Male">Male</option>
-                                  <option value="Female">Female</option>
-                                  <option value="Other">Other</option>
-                                </select>
+                                  {["Male", "Female", "Other"].map((g) => (
+                                    <div key={g} className="flex items-center gap-2">
+                                      <RadioGroupItem value={g} id={`gender-${g}`} />
+                                      <Label htmlFor={`gender-${g}`} className="font-normal cursor-pointer">
+                                        {g}
+                                      </Label>
+                                    </div>
+                                  ))}
+                                </RadioGroup>
                               </div>
                             </div>
-
                             <div className="space-y-2">
-                              <label htmlFor="address" className="text-sm font-semibold text-foreground">
-                                Address (Optional)
-                              </label>
+                              <Label htmlFor="address">Address (Optional)</Label>
                               <Input
                                 id="address"
-                                type="text"
-                                placeholder="Street, city"
                                 value={details.address}
-                                onChange={(e) => setDetail("address", e.target.value)}
+                                onChange={(e) => setDetails((p) => ({ ...p, address: e.target.value }))}
                                 className="bg-background border-border"
                               />
                             </div>
                           </div>
 
-                          {/* Health screening */}
+                          {/* Health Screening */}
                           <div>
-                            <h3 className="text-foreground font-bold mb-3">
+                            <h3 className="font-bold mb-3">
                               Health Screening
-                              <span className="text-red-400 text-xs ml-2">* Please disclose all</span>
+                              <span className="text-destructive text-xs ml-2 font-normal">
+                                Please disclose all
+                              </span>
                             </h3>
                             <div className="grid grid-cols-2 gap-3">
                               {HEALTH_ITEMS.map((item) => (
                                 <label key={item.key} className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="checkbox"
+                                  <Checkbox
                                     checked={details[item.key] as boolean}
-                                    onChange={(e) => setDetail(item.key, e.target.checked as never)}
-                                    className="w-4 h-4 accent-primary"
+                                    onCheckedChange={(checked) =>
+                                      setDetails((p) => ({ ...p, [item.key]: checked === true }))
+                                    }
                                   />
-                                  <span className="text-muted-foreground text-sm">{item.label}</span>
+                                  <span className="text-sm text-muted-foreground">{item.label}</span>
                                 </label>
                               ))}
                             </div>
                             <Input
-                              type="text"
                               placeholder="Any other medical condition…"
                               value={details.health_other}
-                              onChange={(e) => setDetail("health_other", e.target.value)}
+                              onChange={(e) => setDetails((p) => ({ ...p, health_other: e.target.value }))}
                               className="mt-3 bg-background border-border"
                             />
                           </div>
 
                           {/* Goal */}
                           <div className="space-y-2">
-                            <label htmlFor="primary_goal" className="text-sm font-semibold text-foreground">
-                              Primary Goal
-                            </label>
-                            <select
-                              id="primary_goal"
+                            <Label>Primary Goal</Label>
+                            <Select
                               value={details.primary_goal}
-                              onChange={(e) => setDetail("primary_goal", e.target.value)}
-                              className="w-full h-10 px-3 py-2 text-sm bg-background border border-input rounded-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                              onValueChange={(v) => setDetails((p) => ({ ...p, primary_goal: v }))}
                             >
-                              <option value="" disabled>Select…</option>
-                              {GOALS.map((g) => (
-                                <option key={g} value={g}>{g}</option>
-                              ))}
-                            </select>
+                              <SelectTrigger className="bg-background border-border">
+                                <SelectValue placeholder="Select a goal" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {GOALS.map((g) => (
+                                  <SelectItem key={g} value={g}>
+                                    {g}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
 
-                          {/* Emergency contact */}
-                          <div className="border-t border-border pt-5">
-                            <p className="text-sm font-semibold mb-4">Emergency Contact</p>
-                            <div className="grid grid-cols-2 gap-4">
+                          {/* Emergency Contact */}
+                          <div>
+                            <h3 className="font-bold mb-3">Emergency Contact</h3>
+                            <div className="grid sm:grid-cols-3 gap-3">
                               <Input
-                                type="text"
-                                placeholder="Contact name"
+                                placeholder="Name"
                                 value={details.emergency_name}
-                                onChange={(e) => setDetail("emergency_name", e.target.value)}
+                                onChange={(e) => setDetails((p) => ({ ...p, emergency_name: e.target.value }))}
                                 className="bg-background border-border"
                               />
                               <Input
-                                type="tel"
-                                placeholder="Contact phone"
+                                placeholder="Phone"
                                 value={details.emergency_phone}
-                                onChange={(e) => setDetail("emergency_phone", e.target.value)}
+                                onChange={(e) => setDetails((p) => ({ ...p, emergency_phone: e.target.value }))}
+                                className="bg-background border-border"
+                              />
+                              <Input
+                                placeholder="Relation"
+                                value={details.emergency_relation}
+                                onChange={(e) =>
+                                  setDetails((p) => ({ ...p, emergency_relation: e.target.value }))
+                                }
                                 className="bg-background border-border"
                               />
                             </div>
-                            <Input
-                              type="text"
-                              placeholder="Relation (e.g. Spouse, Parent)"
-                              value={details.emergency_relation}
-                              onChange={(e) => setDetail("emergency_relation", e.target.value)}
-                              className="mt-3 bg-background border-border"
-                            />
                           </div>
 
                           {/* Referral */}
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                              <label htmlFor="referral_source" className="text-sm font-semibold text-foreground">
-                                How did you hear about us?
-                              </label>
-                              <select
-                                id="referral_source"
+                              <Label>How did you hear about us?</Label>
+                              <Select
                                 value={details.referral_source}
-                                onChange={(e) => setDetail("referral_source", e.target.value)}
-                                className="w-full h-10 px-3 py-2 text-sm bg-background border border-input rounded-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                onValueChange={(v) => setDetails((p) => ({ ...p, referral_source: v }))}
                               >
-                                <option value="" disabled>Select…</option>
-                                {REFERRAL_SOURCES.map((r) => (
-                                  <option key={r} value={r}>{r}</option>
-                                ))}
-                              </select>
+                                <SelectTrigger className="bg-background border-border">
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {REFERRAL_SOURCES.map((r) => (
+                                    <SelectItem key={r} value={r}>
+                                      {r}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div className="space-y-2">
-                              <label htmlFor="referral_code" className="text-sm font-semibold text-foreground">
-                                Referral Code (Optional)
-                              </label>
+                              <Label htmlFor="referralCode">Referral Code (Optional)</Label>
                               <Input
-                                id="referral_code"
-                                type="text"
-                                placeholder="e.g. FRIEND10"
+                                id="referralCode"
                                 value={details.referral_code}
-                                onChange={(e) => setDetail("referral_code", e.target.value)}
+                                onChange={(e) => setDetails((p) => ({ ...p, referral_code: e.target.value }))}
                                 className="bg-background border-border"
                               />
                             </div>
                           </div>
 
                           <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={details.first_time}
-                              onChange={(e) => setDetail("first_time", e.target.checked)}
-                              className="w-4 h-4 accent-primary"
+                              onCheckedChange={(checked) =>
+                                setDetails((p) => ({ ...p, first_time: checked === true }))
+                              }
                             />
-                            <span className="text-sm text-foreground">This is my first visit</span>
+                            <span className="text-sm text-muted-foreground">
+                              This is my first time at CryoRevive
+                            </span>
                           </label>
 
                           {/* Consent */}
                           <div className="bg-muted/40 border border-border rounded-xl p-4">
                             <p className="text-muted-foreground text-xs leading-relaxed mb-3">
-                              I confirm that the information provided is accurate. I understand that
-                              cold plunge, sauna, and contrast therapy involve exposure to extreme
-                              temperatures and may not be suitable for everyone. I voluntarily
-                              participate and accept responsibility for any risks associated.
+                              I confirm that the information provided is accurate. I understand that cold
+                              plunge, sauna, and contrast therapy involve exposure to extreme temperatures
+                              and may not be suitable for everyone. I voluntarily participate and accept
+                              responsibility for any risks associated.
                             </p>
                             <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
+                              <Checkbox
                                 checked={details.consent_accepted}
-                                onChange={(e) => setDetail("consent_accepted", e.target.checked)}
-                                className="w-4 h-4 accent-primary"
+                                onCheckedChange={(checked) =>
+                                  setDetails((p) => ({ ...p, consent_accepted: checked === true }))
+                                }
                               />
-                              <span className="text-foreground text-sm font-medium">
+                              <span className="text-sm font-medium">
                                 I agree to the Terms &amp; Conditions and Liability Waiver
                               </span>
                             </label>
                           </div>
 
-                          {submitError && (
-                            <p className="text-red-400 text-sm text-center">{submitError}</p>
-                          )}
-
-                          <Button
-                            type="submit"
-                            size="lg"
-                            className="w-full bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold"
-                            disabled={!detailsValid || submitting}
-                          >
-                            {submitting ? "Sending…" : "Send Booking Request via WhatsApp"}
-                          </Button>
+                          <div className="flex gap-3">
+                            <Button type="button" variant="outline" onClick={() => setWizardStep(2)}>
+                              <ArrowLeft className="h-4 w-4" /> Back
+                            </Button>
+                            <Button
+                              type="button"
+                              size="lg"
+                              className="flex-1 bg-[#25D366] hover:bg-[#20BA5A] text-white"
+                              disabled={!detailsValid || submitting}
+                              onClick={handleSubmit}
+                            >
+                              {submitting ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin" /> Sending...
+                                </>
+                              ) : (
+                                "Send Booking Request via WhatsApp"
+                              )}
+                            </Button>
+                          </div>
                           <p className="text-xs text-muted-foreground text-center">
                             WhatsApp opens with your booking details pre-filled — our team will confirm
                             the slot and share payment details.
                           </p>
-                        </form>
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
-
-                {/* Success */}
-                {step === "success" && (
-                  <div className="max-w-md mx-auto text-center py-12">
-                    <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <CheckCircle className="w-10 h-10 text-green-500" />
-                    </div>
-                    <h2 className="text-foreground text-2xl font-display font-bold mb-2">
-                      Request Sent!
-                    </h2>
-                    <p className="text-muted-foreground mb-6">
-                      Your booking request has been sent to our team via WhatsApp.
-                      <br />
-                      We&apos;ll confirm your slot and share payment details shortly.
-                    </p>
-                    <Card className="bg-card border-border text-left mb-6">
-                      <CardContent className="p-6 space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Service</span>
-                          <span className="text-foreground font-bold">{selectedService?.name}</span>
                         </div>
-                        {selectedDate && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Date</span>
-                            <span className="text-foreground font-bold">
-                              {format(selectedDate, "EEEE, dd MMMM yyyy")}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Time</span>
-                          <span className="text-foreground font-bold">{selectedTimeSlot}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Amount</span>
-                          <span className="text-primary font-bold">
-                            {selectedService?.priceDisplay}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                    <p className="text-muted-foreground text-xs mb-4">
-                      💬 Didn&apos;t open WhatsApp?
-                    </p>
-                    <a
-                      href={`https://wa.me/${ADMIN_WA}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold rounded-xl transition-colors text-sm"
-                    >
-                      Open WhatsApp
-                    </a>
-                    <div className="mt-4">
-                      <Button type="button" onClick={handleBookAnother} variant="outline">
-                        Book Another Session
-                      </Button>
-                    </div>
-                  </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 )}
               </div>
             )}
@@ -1088,7 +1038,7 @@ Please contact me to confirm. Thank you!`.trim();
                                 <Input
                                   id="eventPhone"
                                   type="tel"
-                                  placeholder="+91 98914 30920"
+                                  placeholder="+91 85958 50920"
                                   value={eventPhone}
                                   onChange={(e) => setEventPhone(e.target.value)}
                                   className="bg-background border-border"
