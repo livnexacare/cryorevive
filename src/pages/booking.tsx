@@ -12,13 +12,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   CheckCircle,
   Snowflake,
   Flame,
@@ -43,16 +36,12 @@ const CENTRE_ICONS: Record<string, typeof Snowflake> = {
   full_body_recovery: Sparkles,
 };
 
-const GOALS = ["Recovery", "Muscle Soreness", "Fat Loss", "Injury Rehab", "General Wellness", "Other"];
-const REFERRAL_SOURCES = ["Friend", "Instagram", "Google", "Gym", "Event", "Other"];
-
 interface BookingDetails {
   full_name: string;
   mobile: string;
   email: string;
   age: string;
   gender: "Male" | "Female" | "Other" | "";
-  address: string;
   health_high_bp: boolean;
   health_heart: boolean;
   health_asthma: boolean;
@@ -60,14 +49,7 @@ interface BookingDetails {
   health_diabetes: boolean;
   health_pregnancy: boolean;
   health_other: string;
-  primary_goal: string;
-  emergency_name: string;
-  emergency_phone: string;
-  emergency_relation: string;
-  referral_source: string;
-  referral_code: string;
-  first_time: boolean;
-  consent_accepted: boolean;
+  consent: boolean;
 }
 
 const EMPTY_DETAILS: BookingDetails = {
@@ -76,7 +58,6 @@ const EMPTY_DETAILS: BookingDetails = {
   email: "",
   age: "",
   gender: "",
-  address: "",
   health_high_bp: false,
   health_heart: false,
   health_asthma: false,
@@ -84,14 +65,7 @@ const EMPTY_DETAILS: BookingDetails = {
   health_diabetes: false,
   health_pregnancy: false,
   health_other: "",
-  primary_goal: "",
-  emergency_name: "",
-  emergency_phone: "",
-  emergency_relation: "",
-  referral_source: "",
-  referral_code: "",
-  first_time: false,
-  consent_accepted: false,
+  consent: false,
 };
 
 const HEALTH_ITEMS: Array<{ key: keyof BookingDetails; label: string }> = [
@@ -136,7 +110,7 @@ export default function Booking() {
   const minEventDateStr = format(addHours(new Date(), 48), "yyyy-MM-dd");
 
   // In-centre wizard state
-  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [livePrices, setLivePrices] = useState<ServicePrice[]>([]);
   const [pricesLoading, setPricesLoading] = useState(true);
   const [selectedService, setSelectedService] = useState("");
@@ -147,14 +121,12 @@ export default function Booking() {
   const [details, setDetails] = useState<BookingDetails>(EMPTY_DETAILS);
   const [isProcessing, setIsProcessing] = useState(false);
   const [wizardError, setWizardError] = useState("");
-  const [bookingConfirmed, setBookingConfirmed] = useState(false);
-  const [confirmedBooking, setConfirmedBooking] = useState<{
+  const [requestSent, setRequestSent] = useState(false);
+  const [sentBooking, setSentBooking] = useState<{
     serviceName: string;
     date: string;
     timeSlot: string;
     amount: number;
-    email: string;
-    paymentId: string;
   } | null>(null);
 
   const minCentreDateStr = format(new Date(), "yyyy-MM-dd");
@@ -196,13 +168,10 @@ export default function Booking() {
     return format(d, "h:mm a");
   };
 
-  const canContinueStep3 =
+  const canSubmit =
     details.full_name.trim().length > 1 &&
     details.mobile.replace("+91", "").trim().length >= 10 &&
-    /\S+@\S+\.\S+/.test(details.email) &&
-    Number(details.age) > 0 &&
-    details.gender !== "" &&
-    details.consent_accepted;
+    details.consent;
 
   const resetWizard = () => {
     setWizardStep(1);
@@ -211,151 +180,81 @@ export default function Booking() {
     setSelectedTimeSlot("");
     setDetails(EMPTY_DETAILS);
     setWizardError("");
-    setBookingConfirmed(false);
-    setConfirmedBooking(null);
+    setRequestSent(false);
+    setSentBooking(null);
   };
 
-  const handlePayment = async () => {
-    if (!selectedServicePrice) {
-      setWizardError("This service is not available for booking right now.");
-      return;
-    }
+  const handleSubmit = async () => {
+    if (!canSubmit || !selectedServicePrice) return;
     setWizardError("");
     setIsProcessing(true);
 
-    try {
-      const bookingRes = await fetch(`${API_URL}/api/bookings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: details.full_name.trim(),
-          email: details.email.trim(),
-          phone: details.mobile.trim(),
-          service_type: selectedService,
-          date: selectedDate,
-          time_slot: selectedTimeSlot,
-          notes: JSON.stringify({
-            age: Number(details.age),
-            gender: details.gender,
-            address: details.address,
-            health: {
-              high_bp: details.health_high_bp,
-              heart: details.health_heart,
-              asthma: details.health_asthma,
-              seizures: details.health_seizures,
-              diabetes: details.health_diabetes,
-              pregnancy: details.health_pregnancy,
-              other: details.health_other,
-            },
-            goal: details.primary_goal,
-            emergency: {
-              name: details.emergency_name,
-              phone: details.emergency_phone,
-              relation: details.emergency_relation,
-            },
-            referral: details.referral_source,
-            referral_code: details.referral_code,
-            first_time: details.first_time,
-          }),
-        }),
-      });
-      const booking = await bookingRes.json();
-      if (!bookingRes.ok) {
-        throw new Error(booking.detail || "Failed to create booking");
-      }
+    const healthConditions = [
+      details.health_high_bp && "High BP",
+      details.health_heart && "Heart Condition",
+      details.health_asthma && "Asthma",
+      details.health_seizures && "Seizures",
+      details.health_diabetes && "Diabetes",
+      details.health_pregnancy && "Pregnancy",
+      details.health_other,
+    ]
+      .filter(Boolean)
+      .join(", ");
 
-      const orderRes = await fetch(`${API_URL}/api/payments/initiate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          booking_id: booking.id,
-          amount: selectedServicePrice.price,
-          currency: "INR",
-        }),
-      });
-      const order = await orderRes.json();
-      if (!orderRes.ok) {
-        throw new Error(order.detail || "Failed to create payment order");
-      }
+    // Save to backend in the background — WhatsApp is the primary confirmation path.
+    fetch(`${API_URL}/api/bookings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: details.full_name.trim(),
+        email: details.email.trim() || `${details.mobile.replace(/\s+/g, "")}@whatsapp.booking`,
+        phone: details.mobile.trim(),
+        service_type: selectedService,
+        date: selectedDate,
+        time_slot: selectedTimeSlot,
+        notes: [
+          details.age && `Age: ${details.age}`,
+          details.gender && `Gender: ${details.gender}`,
+          healthConditions && `Health: ${healthConditions}`,
+        ]
+          .filter(Boolean)
+          .join(" | "),
+      }),
+    }).catch(() => {});
 
-      if (!(window as any).Razorpay) {
-        throw new Error("Payment gateway failed to load. Please refresh and try again.");
-      }
+    const serviceName = getService(selectedService)?.name ?? selectedService;
+    const message = [
+      `🧊 *New CryoRevive Booking Request*`,
+      ``,
+      `*Service:* ${serviceName}`,
+      `*Date:* ${format(new Date(selectedDate + "T00:00:00"), "EEEE, dd MMMM yyyy")}`,
+      `*Time:* ${formatSlotLabel(selectedTimeSlot)}`,
+      `*Price:* ${formatPrice(selectedServicePrice.price)}`,
+      ``,
+      `*Name:* ${details.full_name}`,
+      `*WhatsApp:* ${details.mobile}`,
+      details.email && `*Email:* ${details.email}`,
+      details.age && `*Age:* ${details.age}`,
+      details.gender && `*Gender:* ${details.gender}`,
+      healthConditions && `*Health Notes:* ${healthConditions}`,
+      ``,
+      `_Please confirm the slot and share payment details._`,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n");
 
-      const rzp = new (window as any).Razorpay({
-        key: order.key_id,
-        amount: order.amount,
-        currency: order.currency,
-        order_id: order.razorpay_order_id,
-        name: "CryoRevive",
-        description: `${getService(selectedService)?.name ?? "Recovery Session"} — ${format(
-          new Date(selectedDate + "T00:00:00"),
-          "dd MMM yyyy"
-        )} ${formatSlotLabel(selectedTimeSlot)}`,
-        prefill: {
-          name: details.full_name,
-          email: details.email,
-          contact: details.mobile,
-        },
-        theme: { color: "#06b6d4" },
-        handler: async (response: any) => {
-          try {
-            const verifyRes = await fetch("/api/verify-payment", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
-            });
-            const verify = await verifyRes.json();
+    setSentBooking({
+      serviceName,
+      date: selectedDate,
+      timeSlot: selectedTimeSlot,
+      amount: selectedServicePrice.price,
+    });
+    setRequestSent(true);
+    setIsProcessing(false);
 
-            if (verify.success) {
-              setBookingConfirmed(true);
-              setConfirmedBooking({
-                serviceName: getService(selectedService)?.name ?? selectedService,
-                date: selectedDate,
-                timeSlot: selectedTimeSlot,
-                amount: selectedServicePrice.price,
-                email: details.email,
-                paymentId: response.razorpay_payment_id,
-              });
-
-              const msg = encodeURIComponent(
-                `✅ Payment confirmed!\n\n` +
-                  `Booking: ${getService(selectedService)?.name}\n` +
-                  `Date: ${format(new Date(selectedDate + "T00:00:00"), "dd MMM yyyy")}\n` +
-                  `Time: ${formatSlotLabel(selectedTimeSlot)}\n` +
-                  `Name: ${details.full_name}\n` +
-                  `Payment ID: ${response.razorpay_payment_id}`
-              );
-              setTimeout(() => {
-                window.open(`https://wa.me/${ADMIN_WA}?text=${msg}`, "_blank");
-              }, 1500);
-            } else {
-              setWizardError("Payment verification failed. Please contact support.");
-            }
-          } catch {
-            setWizardError("Payment verification failed. Please contact support.");
-          } finally {
-            setIsProcessing(false);
-          }
-        },
-        modal: {
-          ondismiss: () => {
-            setIsProcessing(false);
-            fetch(`${API_URL}/api/bookings/${booking.id}/cancel-unpaid`, {
-              method: "POST",
-            }).catch(() => {});
-          },
-        },
-      });
-      rzp.open();
-    } catch (err: any) {
-      setWizardError(err.message || "Something went wrong. Please try again.");
-      setIsProcessing(false);
-    }
+    setTimeout(() => {
+      window.open(`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(message)}`, "_blank");
+    }, 500);
   };
 
   useEffect(() => {
@@ -423,7 +322,7 @@ Please contact me to confirm. Thank you!`.trim();
               Start Your Recovery Journey
             </h1>
             <p className="text-sm md:text-lg text-muted-foreground">
-              Pick a service, choose a slot, and confirm via WhatsApp.
+              Pick a service, choose your slot, share details — we&apos;ll confirm &amp; collect payment.
             </p>
           </div>
         </section>
@@ -461,42 +360,50 @@ Please contact me to confirm. Thank you!`.trim();
             {/* ══ In-Centre Tab ══ */}
             {activeTab === "incentre" && (
               <div className="max-w-2xl mx-auto">
-                {bookingConfirmed && confirmedBooking ? (
+                {requestSent && sentBooking ? (
                   <Card className="bg-card border-border">
                     <CardContent className="py-12 px-6 text-center">
                       <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                      <h2 className="text-2xl font-display font-bold mb-2">Booking Confirmed!</h2>
+                      <h2 className="text-2xl font-display font-bold mb-2">Request Sent!</h2>
                       <p className="text-muted-foreground mb-6">
-                        Payment successful. See you at the studio!
+                        Your booking request has been sent to our team via WhatsApp. We&apos;ll
+                        confirm your slot and share payment details shortly.
                       </p>
                       <div className="bg-muted/40 rounded-2xl p-6 text-left mb-6 space-y-3">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Service</span>
-                          <span className="font-bold">{confirmedBooking.serviceName}</span>
+                          <span className="font-bold">{sentBooking.serviceName}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Date</span>
                           <span className="font-bold">
-                            {format(new Date(confirmedBooking.date + "T00:00:00"), "EEEE, dd MMMM yyyy")}
+                            {format(new Date(sentBooking.date + "T00:00:00"), "EEEE, dd MMMM yyyy")}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Time</span>
-                          <span className="font-bold">{formatSlotLabel(confirmedBooking.timeSlot)}</span>
+                          <span className="font-bold">{formatSlotLabel(sentBooking.timeSlot)}</span>
                         </div>
                         <div className="flex justify-between pt-3 border-t border-border">
-                          <span className="text-muted-foreground">Payment</span>
-                          <span className="font-bold text-primary">
-                            {formatPrice(confirmedBooking.amount)} Paid
-                          </span>
+                          <span className="text-muted-foreground">Amount</span>
+                          <span className="font-bold text-primary">{formatPrice(sentBooking.amount)}</span>
                         </div>
                       </div>
-                      <p className="text-xs text-muted-foreground mb-6">
-                        Confirmation sent to {confirmedBooking.email}
-                      </p>
-                      <Button type="button" variant="outline" onClick={resetWizard}>
-                        Book Another Session
+                      <p className="text-xs text-muted-foreground mb-4">Didn&apos;t open WhatsApp?</p>
+                      <Button
+                        type="button"
+                        className="bg-[#25D366] hover:bg-[#20BA5A] text-white"
+                        onClick={() =>
+                          window.open(`https://wa.me/${ADMIN_WA}`, "_blank")
+                        }
+                      >
+                        Open WhatsApp
                       </Button>
+                      <div>
+                        <Button type="button" variant="ghost" className="mt-3" onClick={resetWizard}>
+                          Book Another Session
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ) : (
@@ -504,7 +411,7 @@ Please contact me to confirm. Thank you!`.trim();
                     <CardContent className="p-4 sm:p-8">
                       {/* Step indicator */}
                       <div className="flex items-center mb-8">
-                        {["Service", "Date & Time", "Details", "Pay"].map((label, i) => (
+                        {["Service", "Date & Time", "Details"].map((label, i) => (
                           <div key={label} className="flex items-center flex-1 last:flex-none">
                             <div className="flex flex-col items-center gap-1">
                               <div
@@ -522,7 +429,7 @@ Please contact me to confirm. Thank you!`.trim();
                                 {label}
                               </span>
                             </div>
-                            {i < 3 && (
+                            {i < 2 && (
                               <div
                                 className={`flex-1 h-0.5 mx-2 ${
                                   wizardStep > i + 1 ? "bg-primary" : "bg-muted"
@@ -673,7 +580,7 @@ Please contact me to confirm. Thank you!`.trim();
                             </div>
                             <div className="grid sm:grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <Label htmlFor="mobile">Mobile Number *</Label>
+                                <Label htmlFor="mobile">WhatsApp Number *</Label>
                                 <Input
                                   id="mobile"
                                   type="tel"
@@ -684,20 +591,19 @@ Please contact me to confirm. Thank you!`.trim();
                                 />
                               </div>
                               <div className="space-y-2">
-                                <Label htmlFor="detailsEmail">Email *</Label>
+                                <Label htmlFor="detailsEmail">Email (Optional)</Label>
                                 <Input
                                   id="detailsEmail"
                                   type="email"
                                   value={details.email}
                                   onChange={(e) => setDetails((p) => ({ ...p, email: e.target.value }))}
                                   className="bg-background border-border"
-                                  required
                                 />
                               </div>
                             </div>
                             <div className="grid sm:grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <Label htmlFor="age">Age *</Label>
+                                <Label htmlFor="age">Age (Optional)</Label>
                                 <Input
                                   id="age"
                                   type="number"
@@ -705,11 +611,10 @@ Please contact me to confirm. Thank you!`.trim();
                                   value={details.age}
                                   onChange={(e) => setDetails((p) => ({ ...p, age: e.target.value }))}
                                   className="bg-background border-border"
-                                  required
                                 />
                               </div>
                               <div className="space-y-2">
-                                <Label>Gender *</Label>
+                                <Label>Gender (Optional)</Label>
                                 <RadioGroup
                                   className="flex gap-4 pt-2"
                                   value={details.gender}
@@ -728,26 +633,17 @@ Please contact me to confirm. Thank you!`.trim();
                                 </RadioGroup>
                               </div>
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="address">Address (Optional)</Label>
-                              <Input
-                                id="address"
-                                value={details.address}
-                                onChange={(e) => setDetails((p) => ({ ...p, address: e.target.value }))}
-                                className="bg-background border-border"
-                              />
-                            </div>
                           </div>
 
-                          {/* Health Screening */}
-                          <div>
-                            <h3 className="font-bold mb-3">
-                              Health Screening
-                              <span className="text-destructive text-xs ml-2 font-normal">
+                          {/* Health Screening — collapsible */}
+                          <details className="bg-muted/40 border border-border rounded-xl group">
+                            <summary className="p-4 cursor-pointer font-bold text-sm list-none flex items-center justify-between">
+                              <span>⚕️ Health Screening (tap to expand)</span>
+                              <span className="text-muted-foreground text-xs font-normal">
                                 Please disclose all
                               </span>
-                            </h3>
-                            <div className="grid grid-cols-2 gap-3">
+                            </summary>
+                            <div className="px-4 pb-4 grid grid-cols-2 gap-3">
                               {HEALTH_ITEMS.map((item) => (
                                 <label key={item.key} className="flex items-center gap-2 cursor-pointer">
                                   <Checkbox
@@ -759,122 +655,30 @@ Please contact me to confirm. Thank you!`.trim();
                                   <span className="text-sm text-muted-foreground">{item.label}</span>
                                 </label>
                               ))}
-                            </div>
-                            <Input
-                              placeholder="Any other medical condition…"
-                              value={details.health_other}
-                              onChange={(e) => setDetails((p) => ({ ...p, health_other: e.target.value }))}
-                              className="mt-3 bg-background border-border"
-                            />
-                          </div>
-
-                          {/* Goal */}
-                          <div className="space-y-2">
-                            <Label>Primary Goal</Label>
-                            <Select
-                              value={details.primary_goal}
-                              onValueChange={(v) => setDetails((p) => ({ ...p, primary_goal: v }))}
-                            >
-                              <SelectTrigger className="bg-background border-border">
-                                <SelectValue placeholder="Select a goal" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {GOALS.map((g) => (
-                                  <SelectItem key={g} value={g}>
-                                    {g}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Emergency Contact */}
-                          <div>
-                            <h3 className="font-bold mb-3">Emergency Contact</h3>
-                            <div className="grid sm:grid-cols-3 gap-3">
                               <Input
-                                placeholder="Name"
-                                value={details.emergency_name}
-                                onChange={(e) => setDetails((p) => ({ ...p, emergency_name: e.target.value }))}
-                                className="bg-background border-border"
-                              />
-                              <Input
-                                placeholder="Phone"
-                                value={details.emergency_phone}
-                                onChange={(e) => setDetails((p) => ({ ...p, emergency_phone: e.target.value }))}
-                                className="bg-background border-border"
-                              />
-                              <Input
-                                placeholder="Relation"
-                                value={details.emergency_relation}
-                                onChange={(e) =>
-                                  setDetails((p) => ({ ...p, emergency_relation: e.target.value }))
-                                }
-                                className="bg-background border-border"
+                                placeholder="Any other medical condition…"
+                                value={details.health_other}
+                                onChange={(e) => setDetails((p) => ({ ...p, health_other: e.target.value }))}
+                                className="col-span-2 bg-background border-border"
                               />
                             </div>
-                          </div>
-
-                          {/* Referral */}
-                          <div className="grid sm:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label>How did you hear about us?</Label>
-                              <Select
-                                value={details.referral_source}
-                                onValueChange={(v) => setDetails((p) => ({ ...p, referral_source: v }))}
-                              >
-                                <SelectTrigger className="bg-background border-border">
-                                  <SelectValue placeholder="Select" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {REFERRAL_SOURCES.map((r) => (
-                                    <SelectItem key={r} value={r}>
-                                      {r}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="referralCode">Referral Code (Optional)</Label>
-                              <Input
-                                id="referralCode"
-                                value={details.referral_code}
-                                onChange={(e) => setDetails((p) => ({ ...p, referral_code: e.target.value }))}
-                                className="bg-background border-border"
-                              />
-                            </div>
-                          </div>
-
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <Checkbox
-                              checked={details.first_time}
-                              onCheckedChange={(checked) =>
-                                setDetails((p) => ({ ...p, first_time: checked === true }))
-                              }
-                            />
-                            <span className="text-sm text-muted-foreground">
-                              This is my first time at CryoRevive
-                            </span>
-                          </label>
+                          </details>
 
                           {/* Consent */}
                           <div className="bg-muted/40 border border-border rounded-xl p-4">
-                            <p className="text-muted-foreground text-xs leading-relaxed mb-3">
-                              I confirm that the information provided is accurate. I understand that cold
-                              plunge, sauna, and contrast therapy involve exposure to extreme temperatures
-                              and may not be suitable for everyone. I voluntarily participate and accept
-                              responsibility for any risks associated.
-                            </p>
-                            <label className="flex items-center gap-2 cursor-pointer">
+                            <label className="flex items-start gap-3 cursor-pointer">
                               <Checkbox
-                                checked={details.consent_accepted}
+                                className="mt-0.5"
+                                checked={details.consent}
                                 onCheckedChange={(checked) =>
-                                  setDetails((p) => ({ ...p, consent_accepted: checked === true }))
+                                  setDetails((p) => ({ ...p, consent: checked === true }))
                                 }
                               />
-                              <span className="text-sm font-medium">
-                                I agree to the Terms &amp; Conditions and Liability Waiver
+                              <span className="text-muted-foreground text-xs leading-relaxed">
+                                I confirm the information is accurate. I understand cold plunge, sauna, and
+                                contrast therapy involve exposure to extreme temperatures and may not be
+                                suitable for everyone. I voluntarily participate and accept responsibility
+                                for any associated risks.
                               </span>
                             </label>
                           </div>
@@ -886,64 +690,21 @@ Please contact me to confirm. Thank you!`.trim();
                             <Button
                               type="button"
                               size="lg"
-                              className="flex-1"
-                              disabled={!canContinueStep3}
-                              onClick={() => setWizardStep(4)}
-                            >
-                              Continue to Payment
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Step 4 — Pay */}
-                      {wizardStep === 4 && selectedServicePrice && (
-                        <div className="space-y-6">
-                          <h2 className="text-xl font-display font-bold">Review &amp; Pay</h2>
-                          <div className="bg-muted/40 rounded-2xl p-6 space-y-3">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Service</span>
-                              <span className="font-bold">{getService(selectedService)?.name}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Date</span>
-                              <span className="font-bold">
-                                {format(new Date(selectedDate + "T00:00:00"), "EEEE, dd MMMM yyyy")}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Time</span>
-                              <span className="font-bold">{formatSlotLabel(selectedTimeSlot)}</span>
-                            </div>
-                            <div className="flex justify-between pt-3 border-t border-border">
-                              <span className="font-bold">Total Amount</span>
-                              <span className="text-lg font-bold text-primary">
-                                {formatPrice(selectedServicePrice.price)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => setWizardStep(3)}
-                              disabled={isProcessing}
-                            >
-                              <ArrowLeft className="h-4 w-4" /> Back
-                            </Button>
-                            <Button
-                              type="button"
-                              size="lg"
-                              className="flex-1"
-                              disabled={isProcessing}
-                              onClick={handlePayment}
+                              className="flex-1 bg-[#25D366] hover:bg-[#20BA5A] text-white"
+                              disabled={!canSubmit || isProcessing}
+                              onClick={handleSubmit}
                             >
                               {isProcessing ? (
                                 <>
-                                  <Loader2 className="h-4 w-4 animate-spin" /> Processing...
+                                  <Loader2 className="h-4 w-4 animate-spin" /> Sending...
                                 </>
                               ) : (
-                                `Pay ${formatPrice(selectedServicePrice.price)}`
+                                <>
+                                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                  </svg>
+                                  Send Booking Request via WhatsApp
+                                </>
                               )}
                             </Button>
                           </div>
