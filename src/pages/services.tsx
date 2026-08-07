@@ -179,7 +179,7 @@ export default function Services() {
         "Posture correction",
         "Performance enhancement"
       ],
-      image: null,
+      image: "/physiotherapy.png",
       imageSide: "right" as const,
     },
     {
