@@ -79,6 +79,42 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
         "Massage gun",
         "Recovery guidance"
       ]
+    },
+    {
+      title: "Cupping Therapy",
+      price: getPrice("cupping_therapy", "₹799"),
+      duration: "30 minutes",
+      description: "Traditional cupping therapy to release muscle tension and improve blood flow",
+      features: [
+        "Traditional cupping technique",
+        "Releases muscle tension",
+        "Improves circulation",
+        "Reduces inflammation"
+      ]
+    },
+    {
+      title: "Deep Tissue Massage",
+      price: getPrice("deep_tissue_massage", "₹799"),
+      duration: "45 minutes",
+      description: "Deep pressure massage targeting deeper muscle layers for pain relief and recovery",
+      features: [
+        "Deep pressure technique",
+        "Relieves muscle tension",
+        "Improves mobility",
+        "Enhances performance"
+      ]
+    },
+    {
+      title: "Physiotherapy",
+      price: getPrice("physiotherapy", "₹1,999"),
+      duration: "60 minutes",
+      description: "Professional physiotherapy for injury recovery, rehabilitation and performance optimization",
+      features: [
+        "Certified physiotherapist",
+        "Injury rehabilitation",
+        "Pain management",
+        "Posture correction"
+      ]
     }
   ];
 

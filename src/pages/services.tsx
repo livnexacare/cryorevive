@@ -4,8 +4,16 @@ import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
 import { Button } from "@/components/ui/button";
-import { Snowflake, Droplets, Repeat, Truck, Activity, Sparkles, Clock, Thermometer, CheckCircle } from "lucide-react";
+import { Snowflake, Droplets, Repeat, Truck, Activity, Sparkles, Clock, Thermometer, CheckCircle, Droplet, Hand, Stethoscope } from "lucide-react";
 import Link from "next/link";
+
+const COLOR_STYLES: Record<string, { border: string; button: string }> = {
+  "text-primary": { border: "border-primary/30", button: "bg-primary hover:bg-primary/90 text-background" },
+  "text-accent": { border: "border-accent/30", button: "bg-accent hover:bg-accent/90 text-background" },
+  "text-orange-400": { border: "border-orange-500/30", button: "bg-orange-500 hover:bg-orange-600 text-white" },
+  "text-blue-400": { border: "border-blue-500/30", button: "bg-blue-500 hover:bg-blue-600 text-white" },
+  "text-green-400": { border: "border-green-500/30", button: "bg-green-500 hover:bg-green-600 text-white" },
+};
 
 export default function Services() {
   const router = useRouter();
@@ -112,6 +120,69 @@ export default function Services() {
       image: "/full-body.png"
     },
     {
+      icon: Droplet,
+      title: "Cupping Therapy",
+      tagline: "Traditional Recovery Therapy",
+      description: "Traditional cupping therapy that uses suction to release muscle tension, improve blood flow, and accelerate recovery through time-tested therapeutic technique.",
+      statLabel: "Method",
+      statValue: "Traditional Cupping",
+      duration: "30 minutes",
+      color: "text-orange-400",
+      bgColor: "bg-orange-500/10",
+      serviceType: "cupping_therapy",
+      benefits: [
+        "Releases deep muscle tension",
+        "Improves blood circulation",
+        "Reduces inflammation",
+        "Detoxifies the body",
+        "Accelerates post-workout recovery"
+      ],
+      image: "/cupping-thrapy.png",
+      imageSide: "right" as const,
+    },
+    {
+      icon: Hand,
+      title: "Deep Tissue Massage",
+      tagline: "Therapeutic Massage",
+      description: "Deep pressure massage targeting deeper muscle layers and connective tissue for lasting pain relief, improved mobility, and faster recovery.",
+      statLabel: "Pressure",
+      statValue: "Deep Tissue",
+      duration: "45 minutes",
+      color: "text-blue-400",
+      bgColor: "bg-blue-500/10",
+      serviceType: "deep_tissue_massage",
+      benefits: [
+        "Relieves deep muscle tension",
+        "Reduces pain & soreness",
+        "Improves mobility & flexibility",
+        "Enhances athletic performance",
+        "Reduces stress and anxiety"
+      ],
+      image: "/deep-tissue-therapy.png",
+      imageSide: "left" as const,
+    },
+    {
+      icon: Stethoscope,
+      title: "Physiotherapy",
+      tagline: "Professional Rehabilitation",
+      description: "Professional physiotherapy for injury recovery, rehabilitation and performance optimization, guided by certified practitioners.",
+      statLabel: "Care",
+      statValue: "Clinical Rehab",
+      duration: "60 minutes",
+      color: "text-green-400",
+      bgColor: "bg-green-500/10",
+      serviceType: "physiotherapy",
+      benefits: [
+        "Injury rehabilitation",
+        "Chronic pain management",
+        "Improved mobility & range of motion",
+        "Posture correction",
+        "Performance enhancement"
+      ],
+      image: null,
+      imageSide: "right" as const,
+    },
+    {
       icon: Truck,
       title: "Mobile Recovery Unit",
       tagline: "On-Site Elite Services",
@@ -167,20 +238,32 @@ export default function Services() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {services.map((service, index) => {
               const Icon = service.icon;
-              const isEven = index % 2 === 0;
+              const isEven = "imageSide" in service
+                ? service.imageSide === "left"
+                : index % 2 === 0;
+              const colorStyle = COLOR_STYLES[service.color] ?? COLOR_STYLES["text-accent"];
 
               return (
                 <div key={index} className={`${index !== services.length - 1 ? 'mb-8 pb-8 border-b border-white/5 md:mb-20 md:pb-0 md:border-0' : ''}`}>
                   <div className={`grid lg:grid-cols-2 gap-5 md:gap-12 items-center`}>
-                    <div className={`relative aspect-video md:aspect-auto md:h-[400px] rounded-2xl overflow-hidden border ${service.color === 'text-primary' ? 'border-primary/30' : 'border-accent/30'} ${isEven ? 'order-1' : 'order-1 lg:order-2'}`}>
-                      <Image
-                        src={service.image}
-                        alt={service.title}
-                        fill
-                        sizes="(max-width: 1024px) 100vw, 50vw"
-                        quality={95}
-                        className="object-cover"
-                      />
+                    <div className={`relative aspect-video md:aspect-auto md:h-[400px] rounded-2xl overflow-hidden border ${colorStyle.border} ${isEven ? 'order-1' : 'order-1 lg:order-2'}`}>
+                      {service.image ? (
+                        <Image
+                          src={service.image}
+                          alt={service.title}
+                          fill
+                          sizes="(max-width: 1024px) 100vw, 50vw"
+                          quality={95}
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-green-900/40 to-cyan-900/40">
+                          <div className="text-center">
+                            <Icon className={`h-16 w-16 mx-auto ${service.color}`} />
+                            <p className="text-gray-400 text-sm mt-3">Photo coming soon</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className={`space-y-4 md:space-y-6 ${isEven ? 'order-2' : 'order-2 lg:order-1'}`}>
@@ -231,7 +314,7 @@ export default function Services() {
                         <Button
                           size="lg"
                           onClick={() => handleBookService(service.serviceType)}
-                          className={`w-full md:w-auto py-3 text-sm rounded-xl ${service.color === 'text-primary' ? 'bg-primary hover:bg-primary/90' : 'bg-accent hover:bg-accent/90'} text-background font-semibold mt-4`}
+                          className={`w-full md:w-auto py-3 text-sm rounded-xl ${colorStyle.button} font-semibold mt-4`}
                         >
                           Book {service.title}
                         </Button>

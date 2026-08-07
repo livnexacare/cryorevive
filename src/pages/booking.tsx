@@ -21,6 +21,9 @@ import {
   Sparkles,
   Loader2,
   ArrowLeft,
+  Droplet,
+  Hand,
+  Stethoscope,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { SERVICES, getService } from "@/lib/services";
@@ -34,6 +37,9 @@ const CENTRE_ICONS: Record<string, typeof Snowflake> = {
   cryo_chamber: Thermometer,
   compression_therapy: Activity,
   full_body_recovery: Sparkles,
+  cupping_therapy: Droplet,
+  deep_tissue_massage: Hand,
+  physiotherapy: Stethoscope,
 };
 
 interface BookingDetails {

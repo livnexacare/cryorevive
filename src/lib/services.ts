@@ -63,6 +63,33 @@ export const SERVICES: Service[] = [
     description: 'Complete recovery experience for your body and mind',
     serviceType: 'full_body_recovery',
   },
+  {
+    id: 'cupping_therapy',
+    name: 'Cupping Therapy',
+    duration: '30 min',
+    price: 0,
+    priceDisplay: '',
+    description: 'Traditional cupping therapy to release muscle tension and improve blood flow',
+    serviceType: 'cupping_therapy',
+  },
+  {
+    id: 'deep_tissue_massage',
+    name: 'Deep Tissue Massage',
+    duration: '45 min',
+    price: 0,
+    priceDisplay: '',
+    description: 'Deep pressure massage targeting deeper muscle layers for pain relief and recovery',
+    serviceType: 'deep_tissue_massage',
+  },
+  {
+    id: 'physiotherapy',
+    name: 'Physiotherapy',
+    duration: '60 min',
+    price: 0,
+    priceDisplay: '',
+    description: 'Professional physiotherapy for injury recovery, rehabilitation and performance optimization',
+    serviceType: 'physiotherapy',
+  },
 ]
 
 export const getService = (serviceType: string): Service | undefined =>

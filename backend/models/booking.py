@@ -11,6 +11,7 @@ class BookingIn(BaseModel):
         "ice_bath", "steam_sauna", "contrast_therapy",
         "cryo_chamber", "compression_therapy", "full_body_recovery",
         "mobile_unit",
+        "cupping_therapy", "deep_tissue_massage", "physiotherapy",
     ]
     date: Date       # YYYY-MM-DD, parsed to datetime.date by Pydantic
     time_slot: str   # HH:MM (e.g. "09:00")
