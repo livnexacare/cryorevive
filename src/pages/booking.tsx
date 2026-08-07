@@ -113,7 +113,7 @@ export default function Booking() {
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [livePrices, setLivePrices] = useState<ServicePrice[]>([]);
   const [pricesLoading, setPricesLoading] = useState(true);
-  const [selectedService, setSelectedService] = useState("");
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("");
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
@@ -132,7 +132,15 @@ export default function Booking() {
   const minCentreDateStr = format(new Date(), "yyyy-MM-dd");
   const maxCentreDateStr = format(addDays(new Date(), 90), "yyyy-MM-dd");
   const centreServices = SERVICES.filter((s) => s.serviceType !== "mobile_unit");
-  const selectedServicePrice = getServicePrice(livePrices, selectedService);
+  const selectedServicePrices = selectedServices
+    .map((s) => getServicePrice(livePrices, s))
+    .filter((p): p is ServicePrice => Boolean(p));
+  const selectedTotalPrice = selectedServicePrices.reduce((sum, p) => sum + p.price, 0);
+  const toggleService = (serviceType: string) => {
+    setSelectedServices((prev) =>
+      prev.includes(serviceType) ? prev.filter((s) => s !== serviceType) : [...prev, serviceType]
+    );
+  };
 
   useEffect(() => {
     fetchLivePrices()
@@ -140,13 +148,15 @@ export default function Booking() {
       .finally(() => setPricesLoading(false));
   }, []);
 
+  const primaryService = selectedServices[0];
+
   const loadSlots = useCallback(async () => {
-    if (!selectedDate || !selectedService) return;
+    if (!selectedDate || !primaryService) return;
     setSlotsLoading(true);
     setSelectedTimeSlot("");
     try {
       const res = await fetch(
-        `${API_URL}/api/slots?date=${selectedDate}&service_type=${selectedService}`
+        `${API_URL}/api/slots?date=${selectedDate}&service_type=${primaryService}`
       );
       const data = await res.json();
       setAvailableSlots(res.ok ? data.available_slots ?? [] : []);
@@ -155,7 +165,7 @@ export default function Booking() {
     } finally {
       setSlotsLoading(false);
     }
-  }, [selectedDate, selectedService]);
+  }, [selectedDate, primaryService]);
 
   useEffect(() => {
     loadSlots();
@@ -175,7 +185,7 @@ export default function Booking() {
 
   const resetWizard = () => {
     setWizardStep(1);
-    setSelectedService("");
+    setSelectedServices([]);
     setSelectedDate("");
     setSelectedTimeSlot("");
     setDetails(EMPTY_DETAILS);
@@ -185,7 +195,7 @@ export default function Booking() {
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit || !selectedServicePrice) return;
+    if (!canSubmit || selectedServicePrices.length === 0) return;
     setWizardError("");
     setIsProcessing(true);
 
@@ -201,35 +211,44 @@ export default function Booking() {
       .filter(Boolean)
       .join(", ");
 
-    // Save to backend in the background — WhatsApp is the primary confirmation path.
-    fetch(`${API_URL}/api/bookings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: details.full_name.trim(),
-        email: details.email.trim() || `${details.mobile.replace(/\s+/g, "")}@whatsapp.booking`,
-        phone: details.mobile.trim(),
-        service_type: selectedService,
-        date: selectedDate,
-        time_slot: selectedTimeSlot,
-        notes: [
-          details.age && `Age: ${details.age}`,
-          details.gender && `Gender: ${details.gender}`,
-          healthConditions && `Health: ${healthConditions}`,
-        ]
-          .filter(Boolean)
-          .join(" | "),
-      }),
-    }).catch(() => {});
+    const serviceNames = selectedServices
+      .map((s) => getService(s)?.name ?? s)
+      .join(" + ");
 
-    const serviceName = getService(selectedService)?.name ?? selectedService;
+    // Save to backend in the background — WhatsApp is the primary confirmation path.
+    const notes = [
+      selectedServices.length > 1 && `Combined booking with: ${serviceNames}`,
+      details.age && `Age: ${details.age}`,
+      details.gender && `Gender: ${details.gender}`,
+      healthConditions && `Health: ${healthConditions}`,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const savePromises = selectedServices.map((serviceType) =>
+      fetch(`${API_URL}/api/bookings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: details.full_name.trim(),
+          email: details.email.trim() || `${details.mobile.replace(/\s+/g, "")}@whatsapp.booking`,
+          phone: details.mobile.trim(),
+          service_type: serviceType,
+          date: selectedDate,
+          time_slot: selectedTimeSlot,
+          notes,
+        }),
+      }).catch(() => {})
+    );
+    Promise.allSettled(savePromises);
+
     const message = [
       `🧊 *New CryoRevive Booking Request*`,
       ``,
-      `*Service:* ${serviceName}`,
+      `*Service${selectedServices.length > 1 ? "s" : ""}:* ${serviceNames}`,
       `*Date:* ${format(new Date(selectedDate + "T00:00:00"), "EEEE, dd MMMM yyyy")}`,
       `*Time:* ${formatSlotLabel(selectedTimeSlot)}`,
-      `*Price:* ${formatPrice(selectedServicePrice.price)}`,
+      `*${selectedServices.length > 1 ? "Total Price" : "Price"}:* ${formatPrice(selectedTotalPrice)}`,
       ``,
       `*Name:* ${details.full_name}`,
       `*WhatsApp:* ${details.mobile}`,
@@ -244,10 +263,10 @@ export default function Booking() {
       .join("\n");
 
     setSentBooking({
-      serviceName,
+      serviceName: serviceNames,
       date: selectedDate,
       timeSlot: selectedTimeSlot,
-      amount: selectedServicePrice.price,
+      amount: selectedTotalPrice,
     });
     setRequestSent(true);
     setIsProcessing(false);
@@ -263,7 +282,7 @@ export default function Booking() {
       setActiveTab("event");
     }
     if (typeof service === "string" && getService(service)) {
-      setSelectedService(service);
+      setSelectedServices([service]);
     }
   }, [router.query]);
 
@@ -460,37 +479,51 @@ Please contact me to confirm. Thank you!`.trim();
                                 const Icon = CENTRE_ICONS[service.serviceType] ?? Snowflake;
                                 const live = getServicePrice(livePrices, service.serviceType);
                                 if (!live) return null;
+                                const isSelected = selectedServices.includes(service.serviceType);
                                 return (
                                   <button
                                     key={service.id}
                                     type="button"
-                                    onClick={() => setSelectedService(service.serviceType)}
-                                    className={`p-4 border-2 rounded-sm text-left transition-all ${
-                                      selectedService === service.serviceType
+                                    onClick={() => toggleService(service.serviceType)}
+                                    className={`relative p-4 border-2 rounded-sm text-left transition-all ${
+                                      isSelected
                                         ? "border-primary bg-primary/5"
                                         : "border-border hover:border-primary/50"
                                     }`}
                                   >
+                                    {isSelected && (
+                                      <div className="absolute top-3 right-3 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                                        <CheckCircle className="w-4 h-4 text-primary-foreground" />
+                                      </div>
+                                    )}
                                     <Icon
                                       className={`h-7 w-7 mb-2 ${
-                                        selectedService === service.serviceType
-                                          ? "text-primary"
-                                          : "text-muted-foreground"
+                                        isSelected ? "text-primary" : "text-muted-foreground"
                                       }`}
                                     />
-                                    <h3 className="font-display font-bold">{service.name}</h3>
+                                    <h3 className="font-display font-bold pr-6">{service.name}</h3>
                                     <p className="text-xs text-muted-foreground mb-1">{live.duration}</p>
                                     <p className="text-lg font-bold text-primary">{formatPrice(live.price)}</p>
                                   </button>
                                 );
                               })}
+                              {selectedServices.length > 0 && (
+                                <div className="col-span-full bg-primary/5 border border-primary/30 rounded-sm p-3 flex items-center justify-between">
+                                  <span className="text-sm font-semibold">
+                                    {selectedServices.length} service{selectedServices.length > 1 ? "s" : ""} selected
+                                  </span>
+                                  <span className="font-bold text-primary">
+                                    Total: {formatPrice(selectedTotalPrice)}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           )}
                           <Button
                             type="button"
                             size="lg"
                             className="w-full"
-                            disabled={!selectedService}
+                            disabled={selectedServices.length === 0}
                             onClick={() => setWizardStep(2)}
                           >
                             Continue
