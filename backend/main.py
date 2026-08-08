@@ -8,7 +8,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_pool, close_pool
-from routers import bookings, contact, blog, payments, uploads, notifications, pricing, clients
+from routers import bookings, contact, blog, payments, uploads, notifications, pricing, clients, coupons
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +40,7 @@ app.include_router(uploads.router)
 app.include_router(notifications.router)
 app.include_router(pricing.router)
 app.include_router(clients.router)
+app.include_router(coupons.router)
 
 
 @app.get("/health")

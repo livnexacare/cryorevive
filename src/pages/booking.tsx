@@ -135,6 +135,16 @@ export default function Booking() {
     amount: number;
   } | null>(null);
 
+  // Coupon state
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discount_amount: number;
+    final_amount: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState("");
+  const [couponValidating, setCouponValidating] = useState(false);
+
   const minCentreDateStr = format(new Date(), "yyyy-MM-dd");
   const maxCentreDateStr = format(addDays(new Date(), 90), "yyyy-MM-dd");
   const centreServices = SERVICES.filter((s) => s.serviceType !== "mobile_unit");
@@ -142,6 +152,7 @@ export default function Booking() {
     .map((s) => getServicePrice(livePrices, s))
     .filter((p): p is ServicePrice => Boolean(p));
   const selectedTotalPrice = selectedServicePrices.reduce((sum, p) => sum + p.price, 0);
+  const finalTotalPrice = appliedCoupon ? appliedCoupon.final_amount : selectedTotalPrice;
   const toggleService = (serviceType: string) => {
     setSelectedServices((prev) =>
       prev.includes(serviceType) ? prev.filter((s) => s !== serviceType) : [...prev, serviceType]
@@ -176,6 +187,45 @@ export default function Booking() {
   useEffect(() => {
     loadSlots();
   }, [loadSlots]);
+
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponError("");
+  }, [selectedServices]);
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim() || selectedTotalPrice <= 0) return;
+    setCouponValidating(true);
+    setCouponError("");
+    try {
+      const res = await fetch(`${API_URL}/api/coupons/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode.trim(), order_value: selectedTotalPrice }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCouponError(data.detail || "Invalid coupon code");
+        setAppliedCoupon(null);
+        return;
+      }
+      setAppliedCoupon({
+        code: data.code,
+        discount_amount: data.discount_amount,
+        final_amount: data.final_amount,
+      });
+    } catch {
+      setCouponError("Failed to validate coupon. Please try again.");
+    } finally {
+      setCouponValidating(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponError("");
+  };
 
   const formatSlotLabel = (slot: string) => {
     const [h, m] = slot.split(":").map(Number);
@@ -227,6 +277,7 @@ export default function Booking() {
       details.age && `Age: ${details.age}`,
       details.gender && `Gender: ${details.gender}`,
       healthConditions && `Health: ${healthConditions}`,
+      appliedCoupon && `Coupon: ${appliedCoupon.code} (-${formatPrice(appliedCoupon.discount_amount)})`,
     ]
       .filter(Boolean)
       .join(" | ");
@@ -248,13 +299,23 @@ export default function Booking() {
     );
     Promise.allSettled(savePromises);
 
+    if (appliedCoupon) {
+      fetch(`${API_URL}/api/coupons/redeem`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: appliedCoupon.code, order_value: selectedTotalPrice }),
+      }).catch(() => {});
+    }
+
     const message = [
       `🧊 *New CryoRevive Booking Request*`,
       ``,
       `*Service${selectedServices.length > 1 ? "s" : ""}:* ${serviceNames}`,
       `*Date:* ${format(new Date(selectedDate + "T00:00:00"), "EEEE, dd MMMM yyyy")}`,
       `*Time:* ${formatSlotLabel(selectedTimeSlot)}`,
-      `*${selectedServices.length > 1 ? "Total Price" : "Price"}:* ${formatPrice(selectedTotalPrice)}`,
+      appliedCoupon
+        ? `*${selectedServices.length > 1 ? "Total Price" : "Price"}:* ~${formatPrice(selectedTotalPrice)}~ ${formatPrice(finalTotalPrice)} (Coupon ${appliedCoupon.code} applied, -${formatPrice(appliedCoupon.discount_amount)})`
+        : `*${selectedServices.length > 1 ? "Total Price" : "Price"}:* ${formatPrice(selectedTotalPrice)}`,
       ``,
       `*Name:* ${details.full_name}`,
       `*WhatsApp:* ${details.mobile}`,
@@ -272,7 +333,7 @@ export default function Booking() {
       serviceName: serviceNames,
       date: selectedDate,
       timeSlot: selectedTimeSlot,
-      amount: selectedTotalPrice,
+      amount: finalTotalPrice,
     });
     setRequestSent(true);
     setIsProcessing(false);
@@ -670,6 +731,52 @@ Please contact me to confirm. Thank you!`.trim();
                                     </div>
                                   ))}
                                 </RadioGroup>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Coupon code + price summary */}
+                          <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
+                            <Label htmlFor="couponCode">Have a coupon code?</Label>
+                            {appliedCoupon ? (
+                              <div className="flex items-center justify-between gap-3 bg-primary/5 border border-primary/30 rounded-sm px-3 py-2">
+                                <span className="text-sm font-semibold text-primary">
+                                  {appliedCoupon.code} applied — {formatPrice(appliedCoupon.discount_amount)} off
+                                </span>
+                                <Button type="button" variant="ghost" size="sm" onClick={handleRemoveCoupon}>
+                                  Remove
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2">
+                                <Input
+                                  id="couponCode"
+                                  value={couponCode}
+                                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                  placeholder="e.g. LAUNCH20"
+                                  className="bg-background border-border uppercase tracking-wide"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  disabled={!couponCode.trim() || couponValidating}
+                                  onClick={handleApplyCoupon}
+                                >
+                                  {couponValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                                </Button>
+                              </div>
+                            )}
+                            {couponError && <p className="text-destructive text-xs">{couponError}</p>}
+                            <div className="pt-2 border-t border-border space-y-1">
+                              {appliedCoupon && (
+                                <div className="flex justify-between text-sm text-muted-foreground">
+                                  <span>Subtotal</span>
+                                  <span className="line-through">{formatPrice(selectedTotalPrice)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between font-bold">
+                                <span>Total</span>
+                                <span className="text-primary">{formatPrice(finalTotalPrice)}</span>
                               </div>
                             </div>
                           </div>

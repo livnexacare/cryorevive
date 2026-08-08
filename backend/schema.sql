@@ -44,3 +44,19 @@ create table if not exists blog_posts (
 );
 create index if not exists idx_blog_posts_slug      on blog_posts(slug);
 create index if not exists idx_blog_posts_published on blog_posts(published);
+
+create table if not exists coupons (
+  id                uuid primary key default gen_random_uuid(),
+  code              text unique not null,
+  discount_type     text not null default 'percentage',
+  discount_value    numeric not null,
+  min_order_value   numeric not null default 0,
+  usage_limit       integer,
+  usage_count       integer not null default 0,
+  expires_at        timestamptz,
+  description       text,
+  is_active         boolean not null default true,
+  created_at        timestamptz not null default now()
+);
+create index if not exists idx_coupons_code   on coupons(code);
+create index if not exists idx_coupons_active on coupons(is_active);

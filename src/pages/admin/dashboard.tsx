@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye } from "lucide-react";
+import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye, Tag } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -22,7 +22,7 @@ const SERVICE_LABELS: Record<string, string> = {
 };
 
 type BookingStatus = "pending" | "confirmed" | "cancelled";
-type DashTab = "bookings" | "announcements" | "pricing";
+type DashTab = "bookings" | "announcements" | "pricing" | "coupons";
 type AnnouncementType = "general" | "offer" | "feature" | "event";
 type EventType = "marathon" | "corporate" | "sports" | "school" | "military" | "custom";
 
@@ -76,6 +76,20 @@ interface EventPricing {
   base_price: number;
   price_per_athlete: number;
   gst_percent: number;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+interface Coupon {
+  id: string;
+  code: string;
+  discount_type: "percentage" | "flat";
+  discount_value: number;
+  min_order_value: number;
+  usage_limit: number | null;
+  usage_count: number;
+  expires_at: string | null;
   description: string | null;
   is_active: boolean;
   created_at: string;
@@ -202,6 +216,19 @@ export default function AdminDashboard() {
   const [tierFormLoading, setTierFormLoading] = useState(false);
   const [tierFormError, setTierFormError] = useState("");
 
+  // Coupons state
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(false);
+  const [couponsTick, setCouponsTick] = useState(0);
+  const emptyCouponForm = {
+    code: "", discount_type: "percentage" as "percentage" | "flat", discount_value: "",
+    min_order_value: "0", usage_limit: "", expires_at: "", description: "", is_active: true,
+  };
+  const [couponForm, setCouponForm] = useState(emptyCouponForm);
+  const [couponFormLoading, setCouponFormLoading] = useState(false);
+  const [couponFormError, setCouponFormError] = useState("");
+  const [couponActionLoading, setCouponActionLoading] = useState<string | null>(null);
+
   // ── Auth ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -284,6 +311,20 @@ export default function AdminDashboard() {
       .finally(() => { if (!cancelled) setTiersLoading(false); });
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab, tiersTick]);
+
+  // ── Fetch coupons ───────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "coupons") return;
+    let cancelled = false;
+    setCouponsLoading(true);
+    fetch(`${API_URL}/api/coupons`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => r.json())
+      .then((data: Coupon[]) => { if (!cancelled) setCoupons(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setCoupons([]); })
+      .finally(() => { if (!cancelled) setCouponsLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, couponsTick]);
 
   // ── Calculator ──────────────────────────────────────────────────────────
 
@@ -448,6 +489,62 @@ export default function AdminDashboard() {
     finally { setTierFormLoading(false); }
   };
 
+  const createCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCouponFormLoading(true); setCouponFormError("");
+    try {
+      const res = await fetch(`${API_URL}/api/coupons`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({
+          code: couponForm.code.trim(),
+          discount_type: couponForm.discount_type,
+          discount_value: parseFloat(couponForm.discount_value),
+          min_order_value: parseFloat(couponForm.min_order_value) || 0,
+          usage_limit: couponForm.usage_limit ? parseInt(couponForm.usage_limit) : null,
+          expires_at: couponForm.expires_at || null,
+          description: couponForm.description.trim() || null,
+          is_active: couponForm.is_active,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      setCouponForm(emptyCouponForm);
+      setCouponsTick(t => t + 1);
+    } catch (e: unknown) { setCouponFormError(e instanceof Error ? e.message : "Failed to create coupon"); }
+    finally { setCouponFormLoading(false); }
+  };
+
+  const toggleCoupon = async (id: string, is_active: boolean) => {
+    setCouponActionLoading(id);
+    try {
+      const res = await fetch(`${API_URL}/api/coupons/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ is_active }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setCoupons(prev => prev.map(c => c.id === id ? { ...c, is_active } : c));
+    } catch { alert("Failed to update coupon."); }
+    finally { setCouponActionLoading(null); }
+  };
+
+  const deleteCoupon = async (id: string) => {
+    if (!confirm("Delete this coupon? This cannot be undone.")) return;
+    setCouponActionLoading(id);
+    try {
+      const res = await fetch(`${API_URL}/api/coupons/${id}`, {
+        method: "DELETE",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setCoupons(prev => prev.filter(c => c.id !== id));
+    } catch { alert("Failed to delete coupon."); }
+    finally { setCouponActionLoading(null); }
+  };
+
   const buildQuote = () => {
     const tier = eventTiers.find(t => t.id === calcTierId);
     if (!tier || !calcResult) return "";
@@ -551,9 +648,9 @@ cryorevive.in | +91 08595850920`;
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 border-b border-border">
-            {(["bookings", "announcements", "pricing"] as DashTab[]).map(tab => {
-              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign };
-              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing" };
+            {(["bookings", "announcements", "pricing", "coupons"] as DashTab[]).map(tab => {
+              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag };
+              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons" };
               const Icon = icons[tab];
               return (
                 <button
@@ -1187,6 +1284,177 @@ cryorevive.in | +91 08595850920`;
                           )}
                         </div>
                       ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* ══ Coupons Tab ══ */}
+          {activeTab === "coupons" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader><CardTitle>Create New Coupon</CardTitle></CardHeader>
+                <CardContent>
+                  <form onSubmit={createCoupon} className="space-y-4">
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="sm:col-span-2">
+                        <label className="text-sm font-medium mb-1 block">Coupon Code *</label>
+                        <Input
+                          value={couponForm.code}
+                          onChange={e => setCouponForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                          placeholder="e.g. LAUNCH20"
+                          className="uppercase tracking-wider"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Type</label>
+                        <select
+                          value={couponForm.discount_type}
+                          onChange={e => setCouponForm(f => ({ ...f, discount_type: e.target.value as "percentage" | "flat" }))}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <option value="percentage">Percentage (%)</option>
+                          <option value="flat">Flat Amount (₹)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">
+                          {couponForm.discount_type === "percentage" ? "Discount %" : "Discount ₹"} *
+                        </label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={couponForm.discount_value}
+                          onChange={e => setCouponForm(f => ({ ...f, discount_value: e.target.value }))}
+                          placeholder={couponForm.discount_type === "percentage" ? "20" : "100"}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Min Order Value (₹)</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={couponForm.min_order_value}
+                          onChange={e => setCouponForm(f => ({ ...f, min_order_value: e.target.value }))}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Usage Limit (blank = unlimited)</label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={couponForm.usage_limit}
+                          onChange={e => setCouponForm(f => ({ ...f, usage_limit: e.target.value }))}
+                          placeholder="Unlimited"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Expiry Date (blank = never)</label>
+                        <Input
+                          type="date"
+                          value={couponForm.expires_at}
+                          onChange={e => setCouponForm(f => ({ ...f, expires_at: e.target.value }))}
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-sm font-medium mb-1 block">Description</label>
+                        <Input
+                          value={couponForm.description}
+                          onChange={e => setCouponForm(f => ({ ...f, description: e.target.value }))}
+                          placeholder="e.g. 20% off on studio launch"
+                        />
+                      </div>
+                      <div className="sm:col-span-2 flex items-center justify-between bg-muted/30 rounded-lg p-3">
+                        <span className="text-sm font-medium">Active</span>
+                        <button
+                          type="button"
+                          onClick={() => setCouponForm(f => ({ ...f, is_active: !f.is_active }))}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${couponForm.is_active ? "bg-primary" : "bg-muted"}`}
+                        >
+                          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${couponForm.is_active ? "translate-x-[18px]" : "translate-x-1"}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {couponFormError && <p className="text-sm text-destructive">{couponFormError}</p>}
+                    <Button
+                      type="submit"
+                      disabled={couponFormLoading || !couponForm.code.trim() || !couponForm.discount_value}
+                      className="w-full flex items-center gap-2"
+                    >
+                      {couponFormLoading && <Spinner />}
+                      {couponFormLoading ? "Creating..." : "Create Coupon"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Coupons</CardTitle></CardHeader>
+                <CardContent>
+                  {couponsLoading ? (
+                    <div className="py-8 text-center text-muted-foreground">Loading coupons...</div>
+                  ) : coupons.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">No coupons yet. Create one above.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      {coupons.map(coupon => {
+                        const isExpired = Boolean(coupon.expires_at && new Date(coupon.expires_at) < new Date());
+                        const isLive = coupon.is_active && !isExpired;
+                        return (
+                          <div key={coupon.id} className="rounded-lg border border-border p-4">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <span className="font-mono font-black tracking-widest bg-muted px-3 py-1 rounded-lg">
+                                    {coupon.code}
+                                  </span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isLive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>
+                                    {isExpired ? "Expired" : coupon.is_active ? "Active" : "Inactive"}
+                                  </span>
+                                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">
+                                    {coupon.discount_type === "percentage" ? `${coupon.discount_value}% off` : `₹${coupon.discount_value} off`}
+                                  </span>
+                                </div>
+                                {coupon.description && <p className="text-muted-foreground text-xs mb-2">{coupon.description}</p>}
+                                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                                  <span>Used: {coupon.usage_count}{coupon.usage_limit ? `/${coupon.usage_limit}` : "/∞"}</span>
+                                  {coupon.min_order_value > 0 && <span>Min: {fmt(coupon.min_order_value)}</span>}
+                                  {coupon.expires_at && (
+                                    <span className={isExpired ? "text-destructive" : ""}>
+                                      Expires: {new Date(coupon.expires_at).toLocaleDateString("en-IN")}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-2 shrink-0">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={couponActionLoading === coupon.id}
+                                  onClick={() => toggleCoupon(coupon.id, !coupon.is_active)}
+                                  className="h-8"
+                                >
+                                  {coupon.is_active ? "Deactivate" : "Activate"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={couponActionLoading === coupon.id}
+                                  onClick={() => deleteCoupon(coupon.id)}
+                                  className="h-8 px-2"
+                                >
+                                  {couponActionLoading === coupon.id ? <Spinner className="h-3.5 w-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
