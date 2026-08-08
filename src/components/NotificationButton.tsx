@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, X } from "lucide-react";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
@@ -38,6 +39,11 @@ export default function NotificationButton() {
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [subLoading, setSubLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const getDismissed = (): string[] =>
     JSON.parse(localStorage.getItem("dismissed-announcements") || "[]");
@@ -148,8 +154,9 @@ export default function NotificationButton() {
         )}
       </button>
 
-      {/* Side panel */}
-      {panelOpen && (
+      {/* Side panel — portaled to body so it isn't clipped by the nav's
+          backdrop-blur, which creates a containing block for fixed descendants */}
+      {mounted && panelOpen && createPortal(
         <>
           <div
             className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
@@ -263,7 +270,8 @@ export default function NotificationButton() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </>
   );
