@@ -4,12 +4,15 @@ import { SEO } from "@/components/SEO";
 import { format, addDays } from "date-fns";
 import {
   Search, UserPlus, Calendar, Printer, LogOut, ChevronRight,
-  Check, Phone, User, Heart, Loader2,
+  Check, Phone, User, Heart, Loader2, Zap,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { fetchLivePrices, getServicePrice, formatPrice, type ServicePrice } from "@/lib/pricing";
 
 const STAFF_KEY = process.env.NEXT_PUBLIC_STAFF_KEY || "";
+const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
+
+type StaffTab = "clients" | "bookings" | "events" | "profile";
 
 type Tab = "search" | "form" | "book" | "confirm";
 
@@ -64,6 +67,24 @@ interface StaffInfo {
   role: string;
 }
 
+interface Booking {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  service_type: string;
+  date: string;
+  time_slot: string;
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  payment_status: "paid" | "unpaid";
+  created_at: string;
+}
+
+type BookingFilter = "all" | "pending" | "confirmed" | "cancelled";
+
+const formatServiceLabel = (s: string) =>
+  s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
 export default function StaffDashboard() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
@@ -89,6 +110,12 @@ export default function StaffDashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [consent, setConsent] = useState(false);
+
+  // Top-level nav + bookings
+  const [activeStaffTab, setActiveStaffTab] = useState<StaffTab>("clients");
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
+  const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
 
   const selectedService = getServicePrice(livePrices, selectedServiceType);
 
@@ -152,6 +179,41 @@ export default function StaffDashboard() {
     }
   }, [selectedServiceType, selectedDate, fetchSlots]);
 
+  const fetchStaffBookings = useCallback(async () => {
+    setLoadingBookings(true);
+    try {
+      const res = await fetch(`${API_URL}/api/bookings?limit=50`, {
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      const data = await res.json();
+      setBookings(res.ok && Array.isArray(data) ? data : []);
+    } catch {
+      setBookings([]);
+    }
+    setLoadingBookings(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeStaffTab === "bookings" || activeStaffTab === "events" || activeStaffTab === "profile") {
+      fetchStaffBookings();
+    }
+  }, [activeStaffTab, fetchStaffBookings]);
+
+  const filteredBookings =
+    bookingFilter === "all" ? bookings : bookings.filter((b) => b.status === bookingFilter);
+
+  const upcomingBookings = bookings
+    .filter((b) => {
+      const bookingDate = new Date(b.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return bookingDate >= today && b.status !== "cancelled";
+    })
+    .sort(
+      (a, b) =>
+        new Date(`${a.date} ${a.time_slot}`).getTime() - new Date(`${b.date} ${b.time_slot}`).getTime()
+    );
+
   const formatSlotLabel = (slot: string) => {
     const [h, m] = slot.split(":").map(Number);
     const d = new Date();
@@ -206,6 +268,19 @@ export default function StaffDashboard() {
     setSaving(false);
   };
 
+  const handleUpdateBookingStatus = async (id: string, status: string) => {
+    try {
+      await fetch(`${API_URL}/api/bookings/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // fetchStaffBookings below reflects actual server state either way
+    }
+    fetchStaffBookings();
+  };
+
   const handlePrint = () => window.print();
 
   const handleLogout = () => {
@@ -232,7 +307,7 @@ export default function StaffDashboard() {
     <>
       <SEO title="Staff Dashboard — CryoRevive" />
 
-      <div className="no-print min-h-screen bg-background text-foreground">
+      <div className="no-print min-h-screen bg-background text-foreground pb-20">
         <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <span className="text-primary font-bold">CryoRevive</span>
@@ -245,21 +320,10 @@ export default function StaffDashboard() {
               <span className="text-muted-foreground text-sm">Staff App</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {tab !== "search" && (
-              <button
-                onClick={startNewClient}
-                className="px-3 py-1.5 text-xs bg-secondary rounded-lg text-secondary-foreground hover:bg-secondary/70"
-              >
-                New Client
-              </button>
-            )}
-            <button onClick={handleLogout} className="p-2 text-muted-foreground hover:text-foreground">
-              <LogOut size={18} />
-            </button>
-          </div>
         </div>
 
+        {activeStaffTab === "clients" && (
+        <>
         <div className="flex border-b border-border bg-card/50">
           {STEPS.map((step) => (
             <button
@@ -703,6 +767,331 @@ export default function StaffDashboard() {
               </div>
             </div>
           )}
+        </div>
+        </>
+        )}
+
+        {/* ── Bookings ── */}
+        {activeStaffTab === "bookings" && (
+          <div className="max-w-2xl mx-auto px-4 py-6">
+            <h2 className="text-lg font-bold mb-4">All Bookings</h2>
+
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[
+                { label: "Total", value: bookings.length, color: "text-foreground" },
+                {
+                  label: "Confirmed",
+                  value: bookings.filter((b) => b.status === "confirmed").length,
+                  color: "text-green-400",
+                },
+                {
+                  label: "Pending",
+                  value: bookings.filter((b) => b.status === "pending").length,
+                  color: "text-amber-400",
+                },
+              ].map((stat) => (
+                <div key={stat.label} className="bg-card rounded-xl p-3 text-center border border-border">
+                  <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
+                  <p className="text-muted-foreground text-xs">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+              {(["all", "pending", "confirmed", "cancelled"] as BookingFilter[]).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setBookingFilter(f)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                    bookingFilter === f
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-muted-foreground hover:bg-secondary/70"
+                  }`}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {loadingBookings ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredBookings.length === 0 ? (
+              <div className="text-center py-12">
+                <Calendar size={32} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No bookings found</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredBookings.map((b) => (
+                  <div key={b.id} className="bg-card rounded-xl p-4 border border-border">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="text-muted-foreground text-xs font-mono">
+                          #{b.id.slice(0, 8).toUpperCase()}
+                        </p>
+                        <p className="text-foreground font-bold">{b.name}</p>
+                        <p className="text-muted-foreground text-sm">{b.phone}</p>
+                      </div>
+                      <div className="text-right">
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            b.status === "confirmed"
+                              ? "bg-green-500/20 text-green-300"
+                              : b.status === "cancelled"
+                              ? "bg-red-500/20 text-red-300"
+                              : "bg-amber-500/20 text-amber-300"
+                          }`}
+                        >
+                          {b.status}
+                        </span>
+                        <p
+                          className={`text-xs mt-1 ${
+                            b.payment_status === "paid" ? "text-green-400" : "text-amber-400"
+                          }`}
+                        >
+                          {b.payment_status === "paid" ? "✅ Paid" : "⏳ Pay at venue"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Service</p>
+                        <p className="text-foreground font-medium">{formatServiceLabel(b.service_type)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Date</p>
+                        <p className="text-foreground font-medium">
+                          {new Date(b.date).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Time</p>
+                        <p className="text-foreground font-medium">{b.time_slot}</p>
+                      </div>
+                    </div>
+
+                    {(staffInfo?.role === "receptionist" || staffInfo?.role === "manager") && (
+                      <div className="flex gap-2 mt-3">
+                        {b.status === "pending" && (
+                          <button
+                            onClick={() => handleUpdateBookingStatus(b.id, "confirmed")}
+                            className="flex-1 py-2 text-xs bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors"
+                          >
+                            ✓ Confirm
+                          </button>
+                        )}
+                        {b.status !== "cancelled" && (
+                          <button
+                            onClick={() => handleUpdateBookingStatus(b.id, "cancelled")}
+                            className="flex-1 py-2 text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30 rounded-lg font-medium transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Events (upcoming) ── */}
+        {activeStaffTab === "events" && (
+          <div className="max-w-2xl mx-auto px-4 py-6">
+            <h2 className="text-lg font-bold mb-4">Upcoming Sessions</h2>
+
+            {loadingBookings ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : upcomingBookings.length === 0 ? (
+              <div className="text-center py-12">
+                <Calendar size={32} className="text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No upcoming sessions</p>
+              </div>
+            ) : (
+              Object.entries(
+                upcomingBookings.reduce((groups, b) => {
+                  if (!groups[b.date]) groups[b.date] = [];
+                  groups[b.date].push(b);
+                  return groups;
+                }, {} as Record<string, Booking[]>)
+              ).map(([date, dayBookings]) => (
+                <div key={date} className="mb-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="bg-primary/20 border border-primary/30 rounded-xl px-3 py-2 text-center min-w-[60px]">
+                      <p className="text-primary font-black text-lg leading-none">
+                        {new Date(date).getDate()}
+                      </p>
+                      <p className="text-primary text-xs">
+                        {new Date(date).toLocaleDateString("en-IN", { month: "short" })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-foreground font-bold">
+                        {new Date(date).toLocaleDateString("en-IN", { weekday: "long" })}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {dayBookings.length} session{dayBookings.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {dayBookings.map((b) => (
+                      <div key={b.id} className="flex items-center gap-3 bg-card rounded-xl p-3 border border-border">
+                        <div className="text-center min-w-[50px]">
+                          <p className="text-foreground font-bold text-sm">{b.time_slot}</p>
+                        </div>
+                        <div className="w-px h-8 bg-border" />
+                        <div className="flex-1">
+                          <p className="text-foreground font-medium text-sm">{b.name}</p>
+                          <p className="text-muted-foreground text-xs">{formatServiceLabel(b.service_type)}</p>
+                        </div>
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full ${
+                            b.status === "confirmed"
+                              ? "bg-green-500/20 text-green-300"
+                              : "bg-amber-500/20 text-amber-300"
+                          }`}
+                        >
+                          {b.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* ── Profile ── */}
+        {activeStaffTab === "profile" && (
+          <div className="max-w-2xl mx-auto px-4 py-6">
+            {!staffInfo ? (
+              <p className="text-muted-foreground text-sm text-center py-12">Profile unavailable</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-card rounded-2xl p-6 border border-border text-center">
+                  <div className="w-20 h-20 bg-primary/20 border-2 border-primary/40 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-3xl font-black text-primary">
+                      {staffInfo.full_name?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <h2 className="text-foreground text-xl font-bold">{staffInfo.full_name}</h2>
+                  <p className="text-muted-foreground text-sm">@{staffInfo.username}</p>
+                  <span
+                    className={`inline-block mt-2 text-xs px-3 py-1 rounded-full font-medium ${
+                      staffInfo.role === "manager"
+                        ? "bg-purple-500/20 text-purple-300"
+                        : staffInfo.role === "therapist"
+                        ? "bg-blue-500/20 text-blue-300"
+                        : "bg-green-500/20 text-green-300"
+                    }`}
+                  >
+                    {staffInfo.role.charAt(0).toUpperCase() + staffInfo.role.slice(1)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-card rounded-xl p-4 border border-border text-center">
+                    <p className="text-2xl font-black text-primary">
+                      {bookings.filter((b) => b.status === "confirmed").length}
+                    </p>
+                    <p className="text-muted-foreground text-xs mt-1">Confirmed Sessions</p>
+                  </div>
+                  <div className="bg-card rounded-xl p-4 border border-border text-center">
+                    <p className="text-2xl font-black text-green-400">{upcomingBookings.length}</p>
+                    <p className="text-muted-foreground text-xs mt-1">Upcoming Sessions</p>
+                  </div>
+                </div>
+
+                <div className="bg-card rounded-2xl p-5 border border-border space-y-4">
+                  <h3 className="text-foreground font-bold">Staff Details</h3>
+                  {[
+                    { label: "Full Name", value: staffInfo.full_name },
+                    { label: "Username", value: `@${staffInfo.username}` },
+                    { label: "Role", value: staffInfo.role },
+                    { label: "Staff ID", value: staffInfo.staff_id?.slice(0, 8).toUpperCase() || "—" },
+                    { label: "Studio", value: "CryoRevive — Greater Noida" },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex justify-between items-center py-2 border-b border-border/60 last:border-0"
+                    >
+                      <span className="text-muted-foreground text-sm">{item.label}</span>
+                      <span className="text-foreground text-sm font-medium">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-card rounded-2xl p-5 border border-border">
+                  <h3 className="text-foreground font-bold mb-3">Today&apos;s Schedule</h3>
+                  {(() => {
+                    const today = new Date().toISOString().split("T")[0];
+                    const todayBookings = bookings.filter((b) => b.date === today && b.status !== "cancelled");
+                    return todayBookings.length > 0 ? (
+                      <div className="space-y-2">
+                        {todayBookings.map((b) => (
+                          <div
+                            key={b.id}
+                            className="flex justify-between items-center text-sm py-2 border-b border-border/60 last:border-0"
+                          >
+                            <span className="text-foreground">{b.time_slot}</span>
+                            <span className="text-muted-foreground">{formatServiceLabel(b.service_type)}</span>
+                            <span className="text-primary font-medium">{b.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No sessions today</p>
+                    );
+                  })()}
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full py-3 border border-destructive/30 text-destructive hover:bg-destructive/10 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <LogOut size={18} />
+                  Sign Out
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Bottom nav ── */}
+        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border flex z-10 no-print">
+          {(
+            [
+              { key: "clients", label: "Clients", icon: UserPlus },
+              { key: "bookings", label: "Bookings", icon: Calendar },
+              { key: "events", label: "Events", icon: Zap },
+              { key: "profile", label: "Profile", icon: User },
+            ] as { key: StaffTab; label: string; icon: typeof UserPlus }[]
+          ).map((navTab) => (
+            <button
+              key={navTab.key}
+              onClick={() => setActiveStaffTab(navTab.key)}
+              className={`flex-1 flex flex-col items-center py-3 gap-1 transition-colors ${
+                activeStaffTab === navTab.key ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <navTab.icon size={20} />
+              <span className="text-xs font-medium">{navTab.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
