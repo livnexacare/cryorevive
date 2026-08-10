@@ -57,9 +57,17 @@ const STEPS: { key: Tab; label: string; icon: typeof Search }[] = [
   { key: "confirm", label: "4. Confirm", icon: Check },
 ];
 
+interface StaffInfo {
+  staff_id: string;
+  username: string;
+  full_name: string;
+  role: string;
+}
+
 export default function StaffDashboard() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
+  const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
   const [tab, setTab] = useState<Tab>("search");
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<Client[]>([]);
@@ -88,6 +96,10 @@ export default function StaffDashboard() {
     if (!sessionStorage.getItem("cryo_staff")) {
       router.push("/staff");
       return;
+    }
+    const info = sessionStorage.getItem("cryo_staff_info");
+    if (info) {
+      try { setStaffInfo(JSON.parse(info)); } catch { /* ignore malformed cache */ }
     }
     setAuthChecked(true);
   }, [router]);
@@ -198,6 +210,7 @@ export default function StaffDashboard() {
 
   const handleLogout = () => {
     sessionStorage.removeItem("cryo_staff");
+    sessionStorage.removeItem("cryo_staff_info");
     router.push("/staff");
   };
 
@@ -223,7 +236,14 @@ export default function StaffDashboard() {
         <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <span className="text-primary font-bold">CryoRevive</span>
-            <span className="text-muted-foreground text-sm">Staff App</span>
+            {staffInfo ? (
+              <span className="text-muted-foreground text-sm">
+                {staffInfo.full_name}
+                <span className="text-muted-foreground/60"> · {staffInfo.role}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground text-sm">Staff App</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {tab !== "search" && (

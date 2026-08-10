@@ -1,12 +1,13 @@
 import os
 import asyncio
 from datetime import date as Date, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Header, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from database import db_fetch, db_fetchrow, row_to_dict, rows_to_list
+from database import db_execute, db_fetch, db_fetchrow, row_to_dict, rows_to_list
+from utils.auth import generate_temp_password, hash_password, verify_password
 from utils.email import send_booking_received
 from utils.whatsapp import send_whatsapp_notifications
 
@@ -19,6 +20,14 @@ ADMIN_KEY = os.environ.get("ADMIN_API_KEY", "")
 def _require_staff(key: str) -> None:
     if not key or key not in (STAFF_KEY, ADMIN_KEY):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _require_admin(x_admin_key: str) -> None:
+    if not ADMIN_KEY or x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+StaffRole = Literal["receptionist", "therapist", "manager"]
 
 
 class ClientIn(BaseModel):
@@ -53,6 +62,36 @@ class StaffBookingIn(BaseModel):
     time_slot: str
     payment_method: str  # cash | online
     notes: Optional[str] = None
+
+
+class StaffAccountCreate(BaseModel):
+    username: str
+    password: str = Field(min_length=6)
+    full_name: str
+    role: StaffRole = "receptionist"
+
+
+class StaffAccountUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[StaffRole] = None
+    is_active: Optional[bool] = None
+
+
+class StaffLogin(BaseModel):
+    username: str
+    password: str
+
+
+class AdminPasswordReset(BaseModel):
+    new_password: str = Field(min_length=6)
+
+
+class CustomSlotCreate(BaseModel):
+    time_slot: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class CustomSlotUpdate(BaseModel):
+    is_active: bool
 
 
 @router.get("/clients/search")
@@ -174,3 +213,199 @@ async def staff_create_booking(
     asyncio.create_task(send_booking_received(booking))
     asyncio.create_task(send_whatsapp_notifications(booking))
     return booking
+
+
+# ── Staff Account Routes (admin-managed) ────────────────────────────────────
+
+
+@router.get("/staff/accounts")
+async def list_staff(x_admin_key: str = Header("", alias="X-Admin-Key")):
+    _require_admin(x_admin_key)
+    rows = await db_fetch(
+        """SELECT id, username, full_name, role, is_active, last_login, created_at
+           FROM staff_accounts
+           ORDER BY created_at DESC"""
+        # Never return password_hash
+    )
+    return rows_to_list(rows)
+
+
+@router.post("/staff/accounts", status_code=201)
+async def create_staff(
+    data: StaffAccountCreate,
+    x_admin_key: str = Header("", alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+
+    username = data.username.strip().lower()
+
+    existing = await db_fetchrow(
+        "SELECT id FROM staff_accounts WHERE username = $1", username
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    row = await db_fetchrow(
+        """INSERT INTO staff_accounts (username, password_hash, full_name, role)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, username, full_name, role, is_active, created_at""",
+        username,
+        hash_password(data.password),
+        data.full_name.strip(),
+        data.role,
+    )
+    return row_to_dict(row)
+
+
+@router.patch("/staff/accounts/{staff_id}")
+async def update_staff(
+    staff_id: str,
+    data: StaffAccountUpdate,
+    x_admin_key: str = Header("", alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    fields = [f"{k} = ${i + 1}" for i, k in enumerate(update_data.keys())]
+    values = list(update_data.values())
+    values.append(staff_id)
+
+    await db_execute(
+        f"UPDATE staff_accounts SET {', '.join(fields)}, updated_at = NOW() WHERE id = ${len(values)}",
+        *values,
+    )
+    row = await db_fetchrow(
+        "SELECT id, username, full_name, role, is_active, created_at FROM staff_accounts WHERE id = $1",
+        staff_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Staff account not found")
+    return row_to_dict(row)
+
+
+@router.post("/staff/accounts/{staff_id}/reset-password")
+async def reset_staff_password(
+    staff_id: str,
+    x_admin_key: str = Header("", alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+
+    temp_password = generate_temp_password()
+    result = await db_execute(
+        "UPDATE staff_accounts SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+        hash_password(temp_password),
+        staff_id,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Staff account not found")
+    return {"temp_password": temp_password, "message": "Password reset. Share with staff."}
+
+
+@router.delete("/staff/accounts/{staff_id}")
+async def delete_staff(
+    staff_id: str,
+    x_admin_key: str = Header("", alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+    await db_execute("DELETE FROM staff_accounts WHERE id = $1", staff_id)
+    return {"status": "deleted"}
+
+
+# ── Staff Login ──────────────────────────────────────────────────────────────
+# Identifies which staff member is using the shared X-Staff-Key for the rest
+# of the staff PWA (tracks last_login / role for UI purposes only — the actual
+# API authorization is still the shared STAFF_API_KEY, unchanged).
+
+
+@router.post("/staff/login")
+async def staff_login(data: StaffLogin):
+    username = data.username.strip().lower()
+
+    row = await db_fetchrow(
+        """SELECT id, username, password_hash, full_name, role, is_active
+           FROM staff_accounts WHERE username = $1""",
+        username,
+    )
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    account = row_to_dict(row)
+
+    if not account["is_active"]:
+        raise HTTPException(status_code=403, detail="Account is deactivated. Contact admin.")
+
+    if not verify_password(data.password, account["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    await db_execute("UPDATE staff_accounts SET last_login = NOW() WHERE id = $1", account["id"])
+
+    return {
+        "success": True,
+        "staff_id": str(account["id"]),
+        "username": account["username"],
+        "full_name": account["full_name"],
+        "role": account["role"],
+    }
+
+
+# ── Admin Password Reset ─────────────────────────────────────────────────────
+
+
+@router.post("/admin/reset-password")
+async def reset_admin_password(
+    data: AdminPasswordReset,
+    x_admin_key: str = Header("", alias="X-Admin-Key"),
+):
+    """Admin resets their own password. ADMIN_USERNAME/PASSWORD live in Vercel
+    env vars for the frontend login check — the backend can't change those,
+    so this just confirms the new value and returns manual-update instructions."""
+    _require_admin(x_admin_key)
+    return {
+        "message": "To reset the admin password, update ADMIN_PASSWORD in Vercel env vars",
+        "new_password": data.new_password,
+        "instruction": "Go to Vercel → cryo-revive-main → Settings → Environment Variables → ADMIN_PASSWORD",
+    }
+
+
+# ── Custom Time Slots ─────────────────────────────────────────────────────────
+
+
+@router.get("/admin/slots")
+async def get_all_slots(x_admin_key: str = Header("", alias="X-Admin-Key")):
+    _require_admin(x_admin_key)
+    rows = await db_fetch("SELECT * FROM custom_slots ORDER BY created_at ASC")
+    return rows_to_list(rows)
+
+
+@router.patch("/admin/slots/{slot_id}")
+async def toggle_slot(
+    slot_id: str,
+    data: CustomSlotUpdate,
+    x_admin_key: str = Header("", alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+    await db_execute(
+        "UPDATE custom_slots SET is_active = $1 WHERE id = $2",
+        data.is_active,
+        slot_id,
+    )
+    return {"status": "updated"}
+
+
+@router.post("/admin/slots", status_code=201)
+async def add_custom_slot(
+    data: CustomSlotCreate,
+    x_admin_key: str = Header("", alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+    row = await db_fetchrow(
+        """INSERT INTO custom_slots (time_slot)
+           VALUES ($1) ON CONFLICT (time_slot) DO UPDATE
+           SET is_active = true
+           RETURNING *""",
+        data.time_slot,
+    )
+    return row_to_dict(row)

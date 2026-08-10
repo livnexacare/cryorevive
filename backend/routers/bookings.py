@@ -3,6 +3,7 @@ import uuid
 import asyncio
 from datetime import date as Date, datetime, timezone, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
@@ -10,7 +11,9 @@ from database import db_execute, db_fetchrow, db_fetch, row_to_dict, rows_to_lis
 from models.booking import BookingIn, BookingStatusUpdate
 from utils.email import send_booking_received, send_booking_confirmed
 from utils.whatsapp import send_whatsapp_notifications
-from utils.slots import get_available_slots
+from utils.slots import MASTER_SLOTS
+
+IST = ZoneInfo("Asia/Kolkata")
 
 router = APIRouter(prefix="/api", tags=["bookings"])
 
@@ -71,6 +74,11 @@ async def get_slots(
     service_type: str = Query(..., description="ice_bath | steam_sauna | contrast_therapy | mobile_unit"),
 ):
     try:
+        slot_rows = await db_fetch(
+            "SELECT time_slot FROM custom_slots WHERE is_active = true ORDER BY time_slot ASC"
+        )
+        master_slots = [r["time_slot"] for r in slot_rows] or MASTER_SLOTS
+
         rows = await db_fetch(
             """SELECT time_slot FROM bookings
                WHERE date = $1::date AND service_type = $2 AND status != 'cancelled'""",
@@ -81,7 +89,24 @@ async def get_slots(
         raise HTTPException(status_code=500, detail="Failed to fetch slots")
 
     booked = [r["time_slot"] for r in rows]
-    available = get_available_slots(booked)
+    booked_set = set(booked)
+
+    # Slots are stored/compared in local (IST) wall-clock time since the
+    # studio is physically in Greater Noida, India.
+    now_ist = datetime.now(IST)
+    is_today = date == now_ist.date()
+
+    available = []
+    for slot in master_slots:
+        if slot in booked_set:
+            continue
+        if is_today:
+            hour, minute = map(int, slot.split(":"))
+            slot_dt = now_ist.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if slot_dt <= now_ist:
+                continue
+        available.append(slot)
+
     return {
         "date": date,
         "service_type": service_type,

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye, Tag } from "lucide-react";
+import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye, Tag, Users, KeyRound } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -22,9 +22,10 @@ const SERVICE_LABELS: Record<string, string> = {
 };
 
 type BookingStatus = "pending" | "confirmed" | "cancelled";
-type DashTab = "bookings" | "announcements" | "pricing" | "coupons";
+type DashTab = "bookings" | "announcements" | "pricing" | "coupons" | "staff" | "slots";
 type AnnouncementType = "general" | "offer" | "feature" | "event";
 type EventType = "marathon" | "corporate" | "sports" | "school" | "military" | "custom";
+type StaffRole = "receptionist" | "therapist" | "manager";
 
 // ── TypeScript interfaces ────────────────────────────────────────────────────
 
@@ -95,6 +96,23 @@ interface Coupon {
   created_at: string;
 }
 
+interface StaffAccount {
+  id: string;
+  username: string;
+  full_name: string;
+  role: StaffRole;
+  is_active: boolean;
+  last_login: string | null;
+  created_at: string;
+}
+
+interface CustomSlot {
+  id: string;
+  time_slot: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 interface PriceCalculation {
   base_price: number;
   per_athlete_cost: number;
@@ -108,6 +126,12 @@ interface PriceCalculation {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_FILTERS = ["all", "pending", "confirmed", "cancelled"] as const;
+
+const STAFF_ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
+  { value: "receptionist", label: "Receptionist" },
+  { value: "therapist", label: "Therapist" },
+  { value: "manager", label: "Manager" },
+];
 
 const ANN_TYPE_OPTIONS: { value: AnnouncementType; label: string }[] = [
   { value: "general", label: "General" },
@@ -129,6 +153,13 @@ const EVENT_TYPE_OPTIONS: { value: EventType; label: string }[] = [
 
 function fmt(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
+}
+
+function formatSlotLabel(slot: string) {
+  const [h, m] = slot.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 function Spinner({ className = "h-4 w-4" }: { className?: string }) {
@@ -229,6 +260,32 @@ export default function AdminDashboard() {
   const [couponFormError, setCouponFormError] = useState("");
   const [couponActionLoading, setCouponActionLoading] = useState<string | null>(null);
 
+  // Staff accounts state
+  const [staffAccounts, setStaffAccounts] = useState<StaffAccount[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [staffTick, setStaffTick] = useState(0);
+  const emptyStaffForm = { username: "", password: "", full_name: "", role: "receptionist" as StaffRole };
+  const [staffForm, setStaffForm] = useState(emptyStaffForm);
+  const [staffFormLoading, setStaffFormLoading] = useState(false);
+  const [staffFormError, setStaffFormError] = useState("");
+  const [staffActionLoading, setStaffActionLoading] = useState<string | null>(null);
+  const [tempPasswordResult, setTempPasswordResult] = useState<Record<string, string>>({});
+
+  // Admin password reset state
+  const [adminNewPassword, setAdminNewPassword] = useState("");
+  const [adminPwLoading, setAdminPwLoading] = useState(false);
+  const [adminPwMessage, setAdminPwMessage] = useState("");
+  const [adminPwError, setAdminPwError] = useState("");
+
+  // Custom slots state
+  const [customSlots, setCustomSlots] = useState<CustomSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsTick, setSlotsTick] = useState(0);
+  const [newSlotTime, setNewSlotTime] = useState("");
+  const [slotFormLoading, setSlotFormLoading] = useState(false);
+  const [slotFormError, setSlotFormError] = useState("");
+  const [slotActionLoading, setSlotActionLoading] = useState<string | null>(null);
+
   // ── Auth ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -325,6 +382,34 @@ export default function AdminDashboard() {
       .finally(() => { if (!cancelled) setCouponsLoading(false); });
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab, couponsTick]);
+
+  // ── Fetch staff accounts ─────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "staff") return;
+    let cancelled = false;
+    setStaffLoading(true);
+    fetch(`${API_URL}/api/staff/accounts`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => r.json())
+      .then((data: StaffAccount[]) => { if (!cancelled) setStaffAccounts(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setStaffAccounts([]); })
+      .finally(() => { if (!cancelled) setStaffLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, staffTick]);
+
+  // ── Fetch custom slots ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "slots") return;
+    let cancelled = false;
+    setSlotsLoading(true);
+    fetch(`${API_URL}/api/admin/slots`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => r.json())
+      .then((data: CustomSlot[]) => { if (!cancelled) setCustomSlots(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setCustomSlots([]); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, slotsTick]);
 
   // ── Calculator ──────────────────────────────────────────────────────────
 
@@ -545,6 +630,126 @@ export default function AdminDashboard() {
     finally { setCouponActionLoading(null); }
   };
 
+  const createStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStaffFormLoading(true); setStaffFormError("");
+    try {
+      const res = await fetch(`${API_URL}/api/staff/accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({
+          username: staffForm.username.trim(),
+          password: staffForm.password,
+          full_name: staffForm.full_name.trim(),
+          role: staffForm.role,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      setStaffForm(emptyStaffForm);
+      setStaffTick(t => t + 1);
+    } catch (e: unknown) { setStaffFormError(e instanceof Error ? e.message : "Failed to create staff account"); }
+    finally { setStaffFormLoading(false); }
+  };
+
+  const toggleStaffActive = async (id: string, is_active: boolean) => {
+    setStaffActionLoading(id);
+    try {
+      const res = await fetch(`${API_URL}/api/staff/accounts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ is_active }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setStaffAccounts(prev => prev.map(s => s.id === id ? { ...s, is_active } : s));
+    } catch { alert("Failed to update staff account."); }
+    finally { setStaffActionLoading(null); }
+  };
+
+  const resetStaffPassword = async (id: string) => {
+    if (!confirm("Reset this staff member's password? Their current password will stop working immediately.")) return;
+    setStaffActionLoading(id);
+    try {
+      const res = await fetch(`${API_URL}/api/staff/accounts/${id}/reset-password`, {
+        method: "POST",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json() as { temp_password: string };
+      setTempPasswordResult(r => ({ ...r, [id]: data.temp_password }));
+    } catch { alert("Failed to reset password."); }
+    finally { setStaffActionLoading(null); }
+  };
+
+  const deleteStaff = async (id: string) => {
+    if (!confirm("Delete this staff account? This cannot be undone.")) return;
+    setStaffActionLoading(id);
+    try {
+      const res = await fetch(`${API_URL}/api/staff/accounts/${id}`, {
+        method: "DELETE",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setStaffAccounts(prev => prev.filter(s => s.id !== id));
+    } catch { alert("Failed to delete staff account."); }
+    finally { setStaffActionLoading(null); }
+  };
+
+  const changeAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminPwLoading(true); setAdminPwError(""); setAdminPwMessage("");
+    try {
+      const res = await fetch(`${API_URL}/api/admin/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ new_password: adminNewPassword }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      const data = await res.json() as { message: string; instruction: string };
+      setAdminPwMessage(`${data.message}. ${data.instruction}`);
+      setAdminNewPassword("");
+    } catch (e: unknown) { setAdminPwError(e instanceof Error ? e.message : "Failed"); }
+    finally { setAdminPwLoading(false); }
+  };
+
+  const createSlot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSlotFormLoading(true); setSlotFormError("");
+    try {
+      const res = await fetch(`${API_URL}/api/admin/slots`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ time_slot: newSlotTime }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      setNewSlotTime("");
+      setSlotsTick(t => t + 1);
+    } catch (e: unknown) { setSlotFormError(e instanceof Error ? e.message : "Failed to add slot"); }
+    finally { setSlotFormLoading(false); }
+  };
+
+  const toggleSlot = async (id: string, is_active: boolean) => {
+    setSlotActionLoading(id);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/slots/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ is_active }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setCustomSlots(prev => prev.map(s => s.id === id ? { ...s, is_active } : s));
+    } catch { alert("Failed to update slot."); }
+    finally { setSlotActionLoading(null); }
+  };
+
   const buildQuote = () => {
     const tier = eventTiers.find(t => t.id === calcTierId);
     if (!tier || !calcResult) return "";
@@ -648,9 +853,9 @@ cryorevive.in | +91 08595850920`;
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 border-b border-border">
-            {(["bookings", "announcements", "pricing", "coupons"] as DashTab[]).map(tab => {
-              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag };
-              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons" };
+            {(["bookings", "announcements", "pricing", "coupons", "staff", "slots"] as DashTab[]).map(tab => {
+              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag, staff: Users, slots: Clock };
+              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons", staff: "Staff", slots: "Slots" };
               const Icon = icons[tab];
               return (
                 <button
@@ -1455,6 +1660,220 @@ cryorevive.in | +91 08595850920`;
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* ══ Staff Tab ══ */}
+          {activeTab === "staff" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="w-4 h-4" />Admin Password</CardTitle></CardHeader>
+                <CardContent>
+                  <form onSubmit={changeAdminPassword} className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+                    <div className="flex-1 w-full">
+                      <label className="text-sm font-medium mb-1 block">New Password</label>
+                      <Input
+                        type="password"
+                        value={adminNewPassword}
+                        onChange={e => setAdminNewPassword(e.target.value)}
+                        placeholder="At least 6 characters"
+                        minLength={6}
+                        required
+                      />
+                    </div>
+                    <Button type="submit" disabled={adminPwLoading || adminNewPassword.length < 6} className="flex items-center gap-2">
+                      {adminPwLoading && <Spinner />}
+                      {adminPwLoading ? "Updating..." : "Update"}
+                    </Button>
+                  </form>
+                  {adminPwError && <p className="text-sm text-destructive mt-2">{adminPwError}</p>}
+                  {adminPwMessage && <p className="text-sm text-muted-foreground mt-2">{adminPwMessage}</p>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Create Staff Account</CardTitle></CardHeader>
+                <CardContent>
+                  <form onSubmit={createStaff} className="space-y-4">
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Username *</label>
+                        <Input
+                          value={staffForm.username}
+                          onChange={e => setStaffForm(f => ({ ...f, username: e.target.value }))}
+                          placeholder="e.g. priya"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Password *</label>
+                        <Input
+                          type="password"
+                          value={staffForm.password}
+                          onChange={e => setStaffForm(f => ({ ...f, password: e.target.value }))}
+                          placeholder="At least 6 characters"
+                          minLength={6}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Full Name *</label>
+                        <Input
+                          value={staffForm.full_name}
+                          onChange={e => setStaffForm(f => ({ ...f, full_name: e.target.value }))}
+                          placeholder="e.g. Priya Sharma"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Role</label>
+                        <select
+                          value={staffForm.role}
+                          onChange={e => setStaffForm(f => ({ ...f, role: e.target.value as StaffRole }))}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {STAFF_ROLE_OPTIONS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    {staffFormError && <p className="text-sm text-destructive">{staffFormError}</p>}
+                    <Button
+                      type="submit"
+                      disabled={staffFormLoading || !staffForm.username.trim() || staffForm.password.length < 6 || !staffForm.full_name.trim()}
+                      className="w-full flex items-center gap-2"
+                    >
+                      {staffFormLoading && <Spinner />}
+                      {staffFormLoading ? "Creating..." : "Create Staff Account"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Staff Accounts</CardTitle></CardHeader>
+                <CardContent>
+                  {staffLoading ? (
+                    <div className="py-8 text-center text-muted-foreground">Loading staff accounts...</div>
+                  ) : staffAccounts.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">No staff accounts yet. Create one above.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      {staffAccounts.map(staff => (
+                        <div key={staff.id} className="rounded-lg border border-border p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="font-semibold">{staff.full_name}</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">
+                                  {STAFF_ROLE_OPTIONS.find(o => o.value === staff.role)?.label ?? staff.role}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${staff.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-700"}`}>
+                                  {staff.is_active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                              <div className="text-sm text-muted-foreground">@{staff.username}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {staff.last_login ? `Last login: ${new Date(staff.last_login).toLocaleString("en-IN")}` : "Never logged in"}
+                              </div>
+                              {tempPasswordResult[staff.id] && (
+                                <p className="text-xs mt-2 bg-muted/50 rounded px-2 py-1 font-mono">
+                                  New password: <span className="font-bold">{tempPasswordResult[staff.id]}</span> — share this with {staff.full_name}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-2 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={staffActionLoading === staff.id}
+                                onClick={() => toggleStaffActive(staff.id, !staff.is_active)}
+                                className="h-8"
+                              >
+                                {staff.is_active ? "Deactivate" : "Activate"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={staffActionLoading === staff.id}
+                                onClick={() => resetStaffPassword(staff.id)}
+                                className="h-8"
+                              >
+                                Reset Password
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={staffActionLoading === staff.id}
+                                onClick={() => deleteStaff(staff.id)}
+                                className="h-8 px-2"
+                              >
+                                {staffActionLoading === staff.id ? <Spinner className="h-3.5 w-3.5" /> : <Trash2 className="w-3.5 h-3.5" />}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* ══ Slots Tab ══ */}
+          {activeTab === "slots" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader><CardTitle>Add Time Slot</CardTitle></CardHeader>
+                <CardContent>
+                  <form onSubmit={createSlot} className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+                    <div className="flex-1 w-full">
+                      <label className="text-sm font-medium mb-1 block">Time (24-hour, e.g. 07:30)</label>
+                      <Input
+                        type="time"
+                        value={newSlotTime}
+                        onChange={e => setNewSlotTime(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <Button type="submit" disabled={slotFormLoading || !newSlotTime} className="flex items-center gap-2">
+                      {slotFormLoading && <Spinner />}
+                      {slotFormLoading ? "Adding..." : "Add Slot"}
+                    </Button>
+                  </form>
+                  {slotFormError && <p className="text-sm text-destructive mt-2">{slotFormError}</p>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Time Slots</CardTitle></CardHeader>
+                <CardContent>
+                  {slotsLoading ? (
+                    <div className="py-8 text-center text-muted-foreground">Loading time slots...</div>
+                  ) : customSlots.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">No time slots configured. Add one above.</div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {customSlots.map(slot => (
+                        <button
+                          key={slot.id}
+                          disabled={slotActionLoading === slot.id}
+                          onClick={() => toggleSlot(slot.id, !slot.is_active)}
+                          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                            slot.is_active
+                              ? "border-primary/40 bg-primary/10 text-primary"
+                              : "border-border bg-muted/30 text-muted-foreground line-through"
+                          }`}
+                        >
+                          {formatSlotLabel(slot.time_slot)}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </CardContent>
