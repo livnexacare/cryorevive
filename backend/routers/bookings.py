@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from database import db_execute, db_fetchrow, db_fetch, row_to_dict, rows_to_list
-from models.booking import BookingIn, BookingStatusUpdate
+from models.booking import BookingIn, BookingStatusUpdate, BookingUpdate
 from utils.email import send_booking_received, send_booking_confirmed
 from utils.whatsapp import send_whatsapp_notifications
 from utils.slots import MASTER_SLOTS
@@ -193,6 +193,36 @@ async def update_booking_status(
         asyncio.create_task(send_booking_confirmed(updated))
 
     return updated
+
+
+@router.patch("/bookings/{booking_id}")
+async def update_booking(
+    booking_id: str,
+    data: BookingUpdate,
+    x_admin_key: str = Header(default="", alias="X-Admin-Key"),
+):
+    """Full edit of a booking — status, payment_status, service_type, date,
+    time_slot, notes. Unlike /bookings/{id}/status, any subset of fields may
+    be updated in one call."""
+    _require_admin(x_admin_key)
+
+    existing = await db_fetchrow("SELECT id FROM bookings WHERE id = $1", booking_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    fields = [f"{k} = ${i + 1}" for i, k in enumerate(update_data.keys())]
+    values = list(update_data.values())
+    values.append(booking_id)
+
+    await db_execute(
+        f"UPDATE bookings SET {', '.join(fields)} WHERE id = ${len(values)}",
+        *values,
+    )
+    return row_to_dict(await db_fetchrow("SELECT * FROM bookings WHERE id = $1", booking_id))
 
 
 @router.post("/bookings/{booking_id}/cancel-unpaid")

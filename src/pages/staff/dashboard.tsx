@@ -82,6 +82,19 @@ interface Booking {
 
 type BookingFilter = "all" | "pending" | "confirmed" | "cancelled";
 
+interface PayrollRecord {
+  id: string;
+  pay_type: "daily" | "monthly";
+  daily_wage: number | null;
+  monthly_salary: number | null;
+  period_start: string;
+  period_end: string;
+  days_worked: number;
+  total_amount: number;
+  amount_paid: number;
+  amount_pending: number;
+}
+
 const formatServiceLabel = (s: string) =>
   s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -117,6 +130,10 @@ export default function StaffDashboard() {
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [bookingFilter, setBookingFilter] = useState<BookingFilter>("all");
 
+  // My payroll
+  const [myPayroll, setMyPayroll] = useState<PayrollRecord[]>([]);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+
   const selectedService = getServicePrice(livePrices, selectedServiceType);
 
   useEffect(() => {
@@ -134,6 +151,18 @@ export default function StaffDashboard() {
   useEffect(() => {
     fetchLivePrices().then(setLivePrices).finally(() => setPricesLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (activeStaffTab !== "profile" || !staffInfo?.staff_id) return;
+    let cancelled = false;
+    setPayrollLoading(true);
+    fetch(`${API_URL}/api/payroll/my?staff_id=${staffInfo.staff_id}`, { headers: { "X-Staff-Key": STAFF_KEY } })
+      .then(r => r.json())
+      .then((data: PayrollRecord[]) => { if (!cancelled) setMyPayroll(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setMyPayroll([]); })
+      .finally(() => { if (!cancelled) setPayrollLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeStaffTab, staffInfo?.staff_id]);
 
   const handleSearch = async () => {
     if (searchQ.trim().length < 2) return;
@@ -1057,6 +1086,34 @@ export default function StaffDashboard() {
                       <p className="text-muted-foreground text-sm">No sessions today</p>
                     );
                   })()}
+                </div>
+
+                <div className="bg-card rounded-2xl p-5 border border-border">
+                  <h3 className="text-foreground font-bold mb-3">My Payroll</h3>
+                  {payrollLoading ? (
+                    <p className="text-muted-foreground text-sm">Loading...</p>
+                  ) : myPayroll.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No payroll records yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {myPayroll.map((rec) => (
+                        <div key={rec.id} className="flex justify-between items-center text-sm py-2 border-b border-border/60 last:border-0">
+                          <div>
+                            <p className="text-foreground font-medium">
+                              {String(rec.period_start).slice(0, 10)} – {String(rec.period_end).slice(0, 10)}
+                            </p>
+                            <p className="text-muted-foreground text-xs">{rec.days_worked} days · {rec.pay_type}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-foreground font-medium">₹{rec.total_amount.toLocaleString("en-IN")}</p>
+                            <p className={`text-xs ${rec.amount_pending > 0 ? "text-destructive" : "text-green-400"}`}>
+                              {rec.amount_pending > 0 ? `₹${rec.amount_pending.toLocaleString("en-IN")} pending` : "Fully paid"}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <button

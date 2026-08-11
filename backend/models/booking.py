@@ -18,9 +18,24 @@ class BookingIn(BaseModel):
     notes: Optional[str] = ""
 
 
+BookingStatus = Literal[
+    "pending", "confirmed", "cancelled", "completed", "no_show", "postponed"
+]
+PaymentStatus = Literal["unpaid", "paid", "refunded", "partial"]
+
+
 class BookingStatusIn(BaseModel):
-    status: Literal["pending", "confirmed", "cancelled", "completed"]
+    status: BookingStatus
 
 
 class BookingStatusUpdate(BaseModel):
-    status: Literal["pending", "confirmed", "cancelled"]
+    status: BookingStatus
+
+
+class BookingUpdate(BaseModel):
+    status: Optional[BookingStatus] = None
+    payment_status: Optional[PaymentStatus] = None
+    service_type: Optional[str] = None
+    date: Optional[Date] = None
+    time_slot: Optional[str] = None
+    notes: Optional[str] = None

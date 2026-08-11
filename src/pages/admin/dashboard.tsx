@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye, Tag, Users, KeyRound } from "lucide-react";
+import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye, Tag, Users, KeyRound, Wallet } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -21,8 +21,9 @@ const SERVICE_LABELS: Record<string, string> = {
   mobile_unit: "Mobile Unit",
 };
 
-type BookingStatus = "pending" | "confirmed" | "cancelled";
-type DashTab = "bookings" | "announcements" | "pricing" | "coupons" | "staff" | "slots";
+type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "no_show" | "postponed";
+type PaymentStatus = "unpaid" | "paid" | "refunded" | "partial";
+type DashTab = "bookings" | "announcements" | "pricing" | "coupons" | "staff" | "slots" | "payroll";
 type AnnouncementType = "general" | "offer" | "feature" | "event";
 type EventType = "marathon" | "corporate" | "sports" | "school" | "military" | "custom";
 type StaffRole = "receptionist" | "therapist" | "manager";
@@ -39,8 +40,35 @@ interface Booking {
   time_slot: string;
   notes: string;
   status: BookingStatus;
-  payment_status: "unpaid" | "paid";
+  payment_status: PaymentStatus;
   created_at: string;
+}
+
+interface PayrollRecord {
+  id: string;
+  staff_id: string;
+  staff_name: string;
+  pay_type: "daily" | "monthly";
+  daily_wage: number | null;
+  monthly_salary: number | null;
+  period_start: string;
+  period_end: string;
+  days_worked: number;
+  total_amount: number;
+  amount_paid: number;
+  amount_pending: number;
+  notes: string | null;
+  created_at: string;
+}
+
+interface AttendanceRecord {
+  id: string;
+  staff_id: string;
+  date: string;
+  status: "present" | "absent" | "half_day" | "leave";
+  check_in: string | null;
+  check_out: string | null;
+  notes: string | null;
 }
 
 interface Announcement {
@@ -125,7 +153,35 @@ interface PriceCalculation {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_FILTERS = ["all", "pending", "confirmed", "cancelled"] as const;
+const STATUS_FILTERS = ["all", "pending", "confirmed", "cancelled", "completed", "no_show", "postponed"] as const;
+
+const BOOKING_STATUS_OPTIONS: { value: BookingStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "completed", label: "Completed" },
+  { value: "no_show", label: "No Show" },
+  { value: "postponed", label: "Postponed" },
+];
+
+const PAYMENT_STATUS_OPTIONS: { value: PaymentStatus; label: string }[] = [
+  { value: "unpaid", label: "Unpaid" },
+  { value: "paid", label: "Paid" },
+  { value: "refunded", label: "Refunded" },
+  { value: "partial", label: "Partial" },
+];
+
+const PAY_TYPE_OPTIONS: { value: "daily" | "monthly"; label: string }[] = [
+  { value: "daily", label: "Daily wage" },
+  { value: "monthly", label: "Monthly salary" },
+];
+
+const ATTENDANCE_STATUS_OPTIONS: { value: AttendanceRecord["status"]; label: string }[] = [
+  { value: "present", label: "Present" },
+  { value: "absent", label: "Absent" },
+  { value: "half_day", label: "Half Day" },
+  { value: "leave", label: "Leave" },
+];
 
 const STAFF_ROLE_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: "receptionist", label: "Receptionist" },
@@ -187,6 +243,34 @@ export default function AdminDashboard() {
   const [dateFilter, setDateFilter] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
+
+  // Payroll state
+  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const [payrollTick, setPayrollTick] = useState(0);
+  const [payrollStaffFilter, setPayrollStaffFilter] = useState("");
+  const emptyPayrollForm = {
+    staff_id: "", pay_type: "daily" as "daily" | "monthly",
+    daily_wage: "", monthly_salary: "",
+    period_start: "", period_end: "",
+    days_worked: "0", amount_paid: "0", notes: "",
+  };
+  const [payrollForm, setPayrollForm] = useState(emptyPayrollForm);
+  const [payrollFormLoading, setPayrollFormLoading] = useState(false);
+  const [payrollFormError, setPayrollFormError] = useState("");
+  const [editingPayrollId, setEditingPayrollId] = useState<string | null>(null);
+
+  // Attendance state
+  const [attendanceStaffId, setAttendanceStaffId] = useState("");
+  const [attendanceMonth, setAttendanceMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceTick, setAttendanceTick] = useState(0);
+  const emptyAttendanceForm = { date: "", status: "present" as AttendanceRecord["status"], check_in: "", check_out: "", notes: "" };
+  const [attendanceForm, setAttendanceForm] = useState(emptyAttendanceForm);
+  const [attendanceFormLoading, setAttendanceFormLoading] = useState(false);
+  const [attendanceFormError, setAttendanceFormError] = useState("");
 
   // Announcements state
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -386,7 +470,7 @@ export default function AdminDashboard() {
   // ── Fetch staff accounts ─────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!isAuthenticated || activeTab !== "staff") return;
+    if (!isAuthenticated || (activeTab !== "staff" && activeTab !== "payroll")) return;
     let cancelled = false;
     setStaffLoading(true);
     fetch(`${API_URL}/api/staff/accounts`, { headers: { "X-Admin-Key": ADMIN_KEY } })
@@ -396,6 +480,35 @@ export default function AdminDashboard() {
       .finally(() => { if (!cancelled) setStaffLoading(false); });
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab, staffTick]);
+
+  // ── Fetch payroll records ────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "payroll") return;
+    let cancelled = false;
+    setPayrollLoading(true);
+    const qs = payrollStaffFilter ? `?staff_id=${payrollStaffFilter}` : "";
+    fetch(`${API_URL}/api/payroll${qs}`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => r.json())
+      .then((data: PayrollRecord[]) => { if (!cancelled) setPayrollRecords(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setPayrollRecords([]); })
+      .finally(() => { if (!cancelled) setPayrollLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, payrollTick, payrollStaffFilter]);
+
+  // ── Fetch attendance ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "payroll" || !attendanceStaffId) { setAttendanceRecords([]); return; }
+    let cancelled = false;
+    setAttendanceLoading(true);
+    fetch(`${API_URL}/api/attendance?staff_id=${attendanceStaffId}&month=${attendanceMonth}`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => r.json())
+      .then((data: AttendanceRecord[]) => { if (!cancelled) setAttendanceRecords(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setAttendanceRecords([]); })
+      .finally(() => { if (!cancelled) setAttendanceLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, attendanceStaffId, attendanceMonth, attendanceTick]);
 
   // ── Fetch custom slots ───────────────────────────────────────────────────
 
@@ -446,6 +559,67 @@ export default function AdminDashboard() {
       setTick(t => t + 1);
     } catch { alert("Failed to update booking status. Please try again."); }
     finally { setActionLoading(null); }
+  };
+
+  const createPayroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPayrollFormLoading(true); setPayrollFormError("");
+    try {
+      const staff = staffAccounts.find(s => s.id === payrollForm.staff_id);
+      if (!staff) throw new Error("Select a staff member");
+      if (!payrollForm.period_start || !payrollForm.period_end) throw new Error("Period start and end are required");
+
+      const res = await fetch(`${API_URL}/api/payroll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({
+          staff_id: payrollForm.staff_id,
+          staff_name: staff.full_name,
+          pay_type: payrollForm.pay_type,
+          daily_wage: payrollForm.daily_wage ? parseInt(payrollForm.daily_wage) : null,
+          monthly_salary: payrollForm.monthly_salary ? parseInt(payrollForm.monthly_salary) : null,
+          period_start: payrollForm.period_start,
+          period_end: payrollForm.period_end,
+          days_worked: parseInt(payrollForm.days_worked) || 0,
+          amount_paid: parseInt(payrollForm.amount_paid) || 0,
+          notes: payrollForm.notes || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      setPayrollForm(emptyPayrollForm);
+      setPayrollTick(t => t + 1);
+    } catch (e: unknown) { setPayrollFormError(e instanceof Error ? e.message : "Failed to create payroll record"); }
+    finally { setPayrollFormLoading(false); }
+  };
+
+  const markAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!attendanceStaffId || !attendanceForm.date) return;
+    setAttendanceFormLoading(true); setAttendanceFormError("");
+    try {
+      const res = await fetch(`${API_URL}/api/attendance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({
+          staff_id: attendanceStaffId,
+          date: attendanceForm.date,
+          status: attendanceForm.status,
+          check_in: attendanceForm.check_in || null,
+          check_out: attendanceForm.check_out || null,
+          notes: attendanceForm.notes || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      setAttendanceForm(emptyAttendanceForm);
+      setAttendanceTick(t => t + 1);
+    } catch (e: unknown) { setAttendanceFormError(e instanceof Error ? e.message : "Failed to mark attendance"); }
+    finally { setAttendanceFormLoading(false); }
   };
 
   const postAnnouncement = async (e: React.FormEvent) => {
@@ -853,9 +1027,9 @@ cryorevive.in | +91 08595850920`;
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 border-b border-border">
-            {(["bookings", "announcements", "pricing", "coupons", "staff", "slots"] as DashTab[]).map(tab => {
-              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag, staff: Users, slots: Clock };
-              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons", staff: "Staff", slots: "Slots" };
+            {(["bookings", "announcements", "pricing", "coupons", "staff", "slots", "payroll"] as DashTab[]).map(tab => {
+              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag, staff: Users, slots: Clock, payroll: Wallet };
+              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons", staff: "Staff", slots: "Slots", payroll: "Payroll" };
               const Icon = icons[tab];
               return (
                 <button
@@ -892,7 +1066,7 @@ cryorevive.in | +91 08595850920`;
                   <div className="flex gap-2 flex-wrap">
                     {STATUS_FILTERS.map(s => (
                       <Button key={s} variant={statusFilter === s ? "default" : "outline"} size="sm" onClick={() => setStatusFilter(s)}>
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                        {s === "all" ? "All" : BOOKING_STATUS_OPTIONS.find(o => o.value === s)?.label ?? s}
                       </Button>
                     ))}
                   </div>
@@ -921,34 +1095,52 @@ cryorevive.in | +91 08595850920`;
                         {filtered.length === 0 ? (
                           <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No bookings yet</TableCell></TableRow>
                         ) : filtered.map(b => (
-                          <TableRow key={b.id}>
-                            <TableCell className="font-mono text-xs text-muted-foreground">{b.id.slice(0, 8)}</TableCell>
-                            <TableCell className="font-medium">{b.name}</TableCell>
-                            <TableCell>{b.email}</TableCell>
-                            <TableCell>{b.phone}</TableCell>
-                            <TableCell>{SERVICE_LABELS[b.service_type] ?? b.service_type}</TableCell>
-                            <TableCell>{String(b.date).slice(0, 10)}</TableCell>
-                            <TableCell>{b.time_slot}</TableCell>
-                            <TableCell><StatusBadge status={b.status} /></TableCell>
-                            <TableCell><PaymentBadge status={b.payment_status} /></TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{new Date(b.created_at).toLocaleDateString()}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                {b.status === "pending" && (
-                                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "confirmed")}>
-                                    {actionLoading === b.id + "confirmed" && <Spinner className="h-3 w-3" />}
-                                    {actionLoading === b.id + "confirmed" ? "Confirming..." : "Confirm"}
+                          <>
+                            <TableRow key={b.id}>
+                              <TableCell className="font-mono text-xs text-muted-foreground">{b.id.slice(0, 8)}</TableCell>
+                              <TableCell className="font-medium">{b.name}</TableCell>
+                              <TableCell>{b.email}</TableCell>
+                              <TableCell>{b.phone}</TableCell>
+                              <TableCell>{SERVICE_LABELS[b.service_type] ?? b.service_type}</TableCell>
+                              <TableCell>{String(b.date).slice(0, 10)}</TableCell>
+                              <TableCell>{b.time_slot}</TableCell>
+                              <TableCell><StatusBadge status={b.status} /></TableCell>
+                              <TableCell><PaymentBadge status={b.payment_status} /></TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{new Date(b.created_at).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  {b.status === "pending" && (
+                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "confirmed")}>
+                                      {actionLoading === b.id + "confirmed" && <Spinner className="h-3 w-3" />}
+                                      {actionLoading === b.id + "confirmed" ? "Confirming..." : "Confirm"}
+                                    </Button>
+                                  )}
+                                  {(b.status === "pending" || b.status === "confirmed") && (
+                                    <Button size="sm" variant="destructive" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "cancelled")} className="flex items-center gap-1.5">
+                                      {actionLoading === b.id + "cancelled" && <Spinner className="h-3 w-3" />}
+                                      {actionLoading === b.id + "cancelled" ? "Cancelling..." : "Cancel"}
+                                    </Button>
+                                  )}
+                                  <Button size="sm" variant="outline" onClick={() => setEditingBookingId(editingBookingId === b.id ? null : b.id)} className="h-8 px-2">
+                                    <Pencil className="w-3.5 h-3.5" />
                                   </Button>
-                                )}
-                                {(b.status === "pending" || b.status === "confirmed") && (
-                                  <Button size="sm" variant="destructive" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "cancelled")} className="flex items-center gap-1.5">
-                                    {actionLoading === b.id + "cancelled" && <Spinner className="h-3 w-3" />}
-                                    {actionLoading === b.id + "cancelled" ? "Cancelling..." : "Cancel"}
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            {editingBookingId === b.id && (
+                              <TableRow key={b.id + "-edit"}>
+                                <TableCell colSpan={11} className="bg-muted/30">
+                                  <BookingEditForm
+                                    booking={b}
+                                    apiUrl={API_URL}
+                                    adminKey={ADMIN_KEY}
+                                    onSaved={() => { setEditingBookingId(null); setTick(t => t + 1); }}
+                                    onCancel={() => setEditingBookingId(null)}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </>
                         ))}
                       </TableBody>
                     </Table>
@@ -1880,6 +2072,219 @@ cryorevive.in | +91 08595850920`;
               </Card>
             </div>
           )}
+
+          {/* ══ Payroll Tab ══ */}
+          {activeTab === "payroll" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader><CardTitle>Add Payroll Record</CardTitle></CardHeader>
+                <CardContent>
+                  <form onSubmit={createPayroll} className="space-y-4">
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Staff Member *</label>
+                        <select
+                          value={payrollForm.staff_id}
+                          onChange={e => setPayrollForm(f => ({ ...f, staff_id: e.target.value }))}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          required
+                        >
+                          <option value="">Select staff...</option>
+                          {staffAccounts.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Pay Type</label>
+                        <select
+                          value={payrollForm.pay_type}
+                          onChange={e => setPayrollForm(f => ({ ...f, pay_type: e.target.value as "daily" | "monthly" }))}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          {PAY_TYPE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
+                      </div>
+                      {payrollForm.pay_type === "daily" ? (
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Daily Wage (₹)</label>
+                          <Input type="number" min={0} value={payrollForm.daily_wage} onChange={e => setPayrollForm(f => ({ ...f, daily_wage: e.target.value }))} />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Monthly Salary (₹)</label>
+                          <Input type="number" min={0} value={payrollForm.monthly_salary} onChange={e => setPayrollForm(f => ({ ...f, monthly_salary: e.target.value }))} />
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Period Start *</label>
+                        <Input type="date" value={payrollForm.period_start} onChange={e => setPayrollForm(f => ({ ...f, period_start: e.target.value }))} required />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Period End *</label>
+                        <Input type="date" value={payrollForm.period_end} onChange={e => setPayrollForm(f => ({ ...f, period_end: e.target.value }))} required />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Days Worked</label>
+                        <Input type="number" min={0} value={payrollForm.days_worked} onChange={e => setPayrollForm(f => ({ ...f, days_worked: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Amount Paid (₹)</label>
+                        <Input type="number" min={0} value={payrollForm.amount_paid} onChange={e => setPayrollForm(f => ({ ...f, amount_paid: e.target.value }))} />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="text-sm font-medium mb-1 block">Notes</label>
+                        <Input value={payrollForm.notes} onChange={e => setPayrollForm(f => ({ ...f, notes: e.target.value }))} />
+                      </div>
+                    </div>
+                    {payrollFormError && <p className="text-sm text-destructive">{payrollFormError}</p>}
+                    <Button type="submit" disabled={payrollFormLoading} className="flex items-center gap-2">
+                      {payrollFormLoading && <Spinner />}
+                      {payrollFormLoading ? "Adding..." : "Add Payroll Record"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Payroll Records</CardTitle>
+                  <select
+                    value={payrollStaffFilter}
+                    onChange={e => setPayrollStaffFilter(e.target.value)}
+                    className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  >
+                    <option value="">All staff</option>
+                    {staffAccounts.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                  </select>
+                </CardHeader>
+                <CardContent>
+                  {payrollLoading ? (
+                    <div className="py-8 text-center text-muted-foreground">Loading payroll records...</div>
+                  ) : payrollRecords.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">No payroll records yet. Add one above.</div>
+                  ) : (
+                    <div className="space-y-4">
+                      {payrollRecords.map(rec => (
+                        <div key={rec.id} className="rounded-lg border border-border p-4">
+                          {editingPayrollId === rec.id ? (
+                            <PayrollEditForm
+                              record={rec}
+                              apiUrl={API_URL}
+                              adminKey={ADMIN_KEY}
+                              onSaved={() => { setEditingPayrollId(null); setPayrollTick(t => t + 1); }}
+                              onCancel={() => setEditingPayrollId(null)}
+                            />
+                          ) : (
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <span className="font-semibold">{rec.staff_name}</span>
+                                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">
+                                    {rec.pay_type === "daily" ? "Daily" : "Monthly"}
+                                  </span>
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  {String(rec.period_start).slice(0, 10)} – {String(rec.period_end).slice(0, 10)}
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-sm text-muted-foreground mt-2">
+                                  <span>Days: <span className="text-foreground">{rec.days_worked}</span></span>
+                                  <span>Total: <span className="text-foreground">{fmt(rec.total_amount)}</span></span>
+                                  <span>Paid: <span className="text-foreground">{fmt(rec.amount_paid)}</span></span>
+                                  <span>Pending: <span className={rec.amount_pending > 0 ? "text-destructive" : "text-foreground"}>{fmt(rec.amount_pending)}</span></span>
+                                </div>
+                                {rec.notes && <p className="text-xs text-muted-foreground mt-2">{rec.notes}</p>}
+                              </div>
+                              <Button size="sm" variant="outline" onClick={() => setEditingPayrollId(rec.id)} className="h-8 px-2 shrink-0">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Attendance</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <select
+                      value={attendanceStaffId}
+                      onChange={e => setAttendanceStaffId(e.target.value)}
+                      className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Select staff...</option>
+                      {staffAccounts.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+                    </select>
+                    <Input type="month" value={attendanceMonth} onChange={e => setAttendanceMonth(e.target.value)} className="sm:w-[160px]" />
+                  </div>
+
+                  {attendanceStaffId && (
+                    <form onSubmit={markAttendance} className="grid sm:grid-cols-5 gap-3 items-end border-t border-border pt-4">
+                      <div>
+                        <label className="text-xs font-medium mb-1 block">Date *</label>
+                        <Input type="date" value={attendanceForm.date} onChange={e => setAttendanceForm(f => ({ ...f, date: e.target.value }))} className="h-8 text-sm" required />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium mb-1 block">Status</label>
+                        <select
+                          value={attendanceForm.status}
+                          onChange={e => setAttendanceForm(f => ({ ...f, status: e.target.value as AttendanceRecord["status"] }))}
+                          className="w-full h-8 rounded-md border border-input bg-background px-2 text-sm"
+                        >
+                          {ATTENDANCE_STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium mb-1 block">Check In</label>
+                        <Input type="time" value={attendanceForm.check_in} onChange={e => setAttendanceForm(f => ({ ...f, check_in: e.target.value }))} className="h-8 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium mb-1 block">Check Out</label>
+                        <Input type="time" value={attendanceForm.check_out} onChange={e => setAttendanceForm(f => ({ ...f, check_out: e.target.value }))} className="h-8 text-sm" />
+                      </div>
+                      <Button type="submit" size="sm" disabled={attendanceFormLoading} className="flex items-center gap-1.5 h-8">
+                        {attendanceFormLoading && <Spinner className="h-3 w-3" />}
+                        {attendanceFormLoading ? "Saving..." : "Mark"}
+                      </Button>
+                    </form>
+                  )}
+                  {attendanceFormError && <p className="text-xs text-destructive">{attendanceFormError}</p>}
+
+                  {!attendanceStaffId ? (
+                    <p className="text-sm text-muted-foreground py-4">Select a staff member to view or mark attendance.</p>
+                  ) : attendanceLoading ? (
+                    <div className="py-8 text-center text-muted-foreground">Loading attendance...</div>
+                  ) : attendanceRecords.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">No attendance records for this month.</div>
+                  ) : (
+                    <div className="border rounded-lg overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead><TableHead>Status</TableHead>
+                            <TableHead>Check In</TableHead><TableHead>Check Out</TableHead><TableHead>Notes</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {attendanceRecords.map(a => (
+                            <TableRow key={a.id}>
+                              <TableCell>{String(a.date).slice(0, 10)}</TableCell>
+                              <TableCell className="capitalize">{a.status.replace("_", " ")}</TableCell>
+                              <TableCell>{a.check_in ?? "—"}</TableCell>
+                              <TableCell>{a.check_out ?? "—"}</TableCell>
+                              <TableCell className="text-muted-foreground text-xs">{a.notes ?? ""}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </main>
       </div>
     </>
@@ -1962,16 +2367,165 @@ function TierEditForm({ tier, apiUrl, adminKey, onSaved, onCancel }: {
   );
 }
 
+function BookingEditForm({ booking, apiUrl, adminKey, onSaved, onCancel }: {
+  booking: Booking;
+  apiUrl: string;
+  adminKey: string;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({
+    status: booking.status,
+    payment_status: booking.payment_status,
+    service_type: booking.service_type,
+    date: String(booking.date).slice(0, 10),
+    time_slot: booking.time_slot,
+    notes: booking.notes ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setErr("");
+    try {
+      const res = await fetch(`${apiUrl}/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(errBody.detail ?? `Error ${res.status}`);
+      }
+      onSaved();
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Failed to save booking"); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-3 py-2">
+      <div className="grid sm:grid-cols-3 gap-3">
+        <div>
+          <label className="text-xs font-medium mb-1 block">Status</label>
+          <select
+            value={form.status}
+            onChange={e => setForm(f => ({ ...f, status: e.target.value as BookingStatus }))}
+            className="w-full h-8 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            {BOOKING_STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Payment Status</label>
+          <select
+            value={form.payment_status}
+            onChange={e => setForm(f => ({ ...f, payment_status: e.target.value as PaymentStatus }))}
+            className="w-full h-8 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            {PAYMENT_STATUS_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Service Type</label>
+          <Input value={form.service_type} onChange={e => setForm(f => ({ ...f, service_type: e.target.value }))} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Date</label>
+          <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Time Slot</label>
+          <Input value={form.time_slot} onChange={e => setForm(f => ({ ...f, time_slot: e.target.value }))} className="h-8 text-sm" />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium mb-1 block">Notes</label>
+        <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="h-8 text-sm" />
+      </div>
+      {err && <p className="text-xs text-destructive">{err}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving} className="flex items-center gap-1.5">
+          {saving && <Spinner className="h-3 w-3" />}
+          {saving ? "Saving..." : "Save"}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
+      </div>
+    </form>
+  );
+}
+
+function PayrollEditForm({ record, apiUrl, adminKey, onSaved, onCancel }: {
+  record: PayrollRecord;
+  apiUrl: string;
+  adminKey: string;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [form, setForm] = useState({
+    days_worked: String(record.days_worked),
+    amount_paid: String(record.amount_paid),
+    notes: record.notes ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setErr("");
+    try {
+      const res = await fetch(`${apiUrl}/api/payroll/${record.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+        body: JSON.stringify({
+          days_worked: parseInt(form.days_worked) || 0,
+          amount_paid: parseInt(form.amount_paid) || 0,
+          notes: form.notes || null,
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(errBody.detail ?? `Error ${res.status}`);
+      }
+      onSaved();
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Failed to save"); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <form onSubmit={save} className="space-y-3">
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><label className="text-xs font-medium mb-1 block">Days Worked</label><Input type="number" min={0} value={form.days_worked} onChange={e => setForm(f => ({ ...f, days_worked: e.target.value }))} className="h-8 text-sm" /></div>
+        <div><label className="text-xs font-medium mb-1 block">Amount Paid (₹)</label><Input type="number" min={0} value={form.amount_paid} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))} className="h-8 text-sm" /></div>
+      </div>
+      <div><label className="text-xs font-medium mb-1 block">Notes</label><Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="h-8 text-sm" /></div>
+      {err && <p className="text-xs text-destructive">{err}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving} className="flex items-center gap-1.5">
+          {saving && <Spinner className="h-3 w-3" />}
+          {saving ? "Saving..." : "Save"}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
+      </div>
+    </form>
+  );
+}
+
 // ── Badge helpers ────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: BookingStatus }) {
   if (status === "confirmed") return <Badge className="bg-green-100 text-green-800 border border-green-200 hover:bg-green-100">Confirmed</Badge>;
+  if (status === "completed") return <Badge className="bg-blue-100 text-blue-800 border border-blue-200 hover:bg-blue-100">Completed</Badge>;
   if (status === "cancelled") return <Badge variant="destructive">Cancelled</Badge>;
+  if (status === "no_show") return <Badge variant="destructive">No Show</Badge>;
+  if (status === "postponed") return <Badge variant="outline" className="text-orange-700 border-orange-300">Postponed</Badge>;
   return <Badge variant="outline" className="text-yellow-700 border-yellow-300">Pending</Badge>;
 }
 
-function PaymentBadge({ status }: { status: string }) {
+function PaymentBadge({ status }: { status: PaymentStatus }) {
   if (status === "paid") return <Badge className="bg-green-100 text-green-800 border border-green-200 hover:bg-green-100">Paid</Badge>;
+  if (status === "refunded") return <Badge variant="outline" className="text-purple-700 border-purple-300">Refunded</Badge>;
+  if (status === "partial") return <Badge variant="outline" className="text-orange-700 border-orange-300">Partial</Badge>;
   return <Badge variant="secondary">Unpaid</Badge>;
 }
 
