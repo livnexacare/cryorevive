@@ -53,6 +53,15 @@ const EMPTY_CLIENT: Client = {
   first_time: true,
 };
 
+interface ClientMembership {
+  id: string;
+  package_name: string;
+  sessions_total: number;
+  sessions_used: number;
+  sessions_remaining: number;
+  end_date: string;
+}
+
 const STEPS: { key: Tab; label: string; icon: typeof Search }[] = [
   { key: "search", label: "1. Find Client", icon: Search },
   { key: "form", label: "2. Fill Form", icon: User },
@@ -107,6 +116,7 @@ export default function StaffDashboard() {
   const [searchResults, setSearchResults] = useState<Client[]>([]);
   const [searching, setSearching] = useState(false);
   const [client, setClient] = useState<Client>(EMPTY_CLIENT);
+  const [clientMembership, setClientMembership] = useState<ClientMembership | null>(null);
 
   // Live pricing
   const [livePrices, setLivePrices] = useState<ServicePrice[]>([]);
@@ -180,11 +190,25 @@ export default function StaffDashboard() {
     setSearching(false);
   };
 
+  const checkClientMembership = async (mobile: string) => {
+    if (!mobile) { setClientMembership(null); return; }
+    try {
+      const res = await fetch(`${API_URL}/api/memberships/client/${encodeURIComponent(mobile)}`, {
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      const data = await res.json();
+      setClientMembership(data?.has_membership ? data.membership : null);
+    } catch {
+      setClientMembership(null);
+    }
+  };
+
   const loadClient = (c: Client) => {
     setClient(c);
     setTab("form");
     setSearchResults([]);
     setSearchQ("");
+    checkClientMembership(c.mobile);
   };
 
   const fetchSlots = useCallback(async (date: Date, serviceType: string) => {
@@ -320,6 +344,7 @@ export default function StaffDashboard() {
 
   const startNewClient = () => {
     setClient(EMPTY_CLIENT);
+    setClientMembership(null);
     setConsent(false);
     setSelectedServiceType("");
     setSelectedSlot("");
@@ -336,7 +361,7 @@ export default function StaffDashboard() {
     <>
       <SEO title="Staff Dashboard — CryoRevive" />
 
-      <div className="no-print min-h-screen bg-background text-foreground pb-20">
+      <div className="no-print min-h-screen bg-background text-foreground pb-24">
         <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <span className="text-primary font-bold">CryoRevive</span>
@@ -432,6 +457,28 @@ export default function StaffDashboard() {
           {tab === "form" && (
             <div className="space-y-6">
               <h2 className="text-lg font-bold">Client Intake Form</h2>
+
+              {clientMembership && (
+                <div className="bg-primary/10 border border-primary/30 rounded-xl p-3">
+                  <p className="text-primary font-bold text-sm flex items-center gap-2">
+                    🎫 Active Membership: {clientMembership.package_name}
+                  </p>
+                  <div className="flex justify-between mt-2 text-xs">
+                    <span className="text-muted-foreground">
+                      Sessions: {clientMembership.sessions_remaining}/{clientMembership.sessions_total} remaining
+                    </span>
+                    <span className="text-yellow-500">
+                      Expires: {new Date(clientMembership.end_date).toLocaleDateString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+                    <div
+                      className="h-1.5 bg-primary rounded-full"
+                      style={{ width: `${clientMembership.sessions_total > 0 ? (clientMembership.sessions_used / clientMembership.sessions_total) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="bg-card rounded-lg p-5 space-y-4 border border-border">
                 <h3 className="font-bold text-primary flex items-center gap-2">
@@ -1129,7 +1176,7 @@ export default function StaffDashboard() {
         )}
 
         {/* ── Bottom nav ── */}
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border flex z-10 no-print">
+        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border flex z-10 no-print safe-area-inset-bottom">
           {(
             [
               { key: "clients", label: "Clients", icon: UserPlus },
@@ -1141,12 +1188,12 @@ export default function StaffDashboard() {
             <button
               key={navTab.key}
               onClick={() => setActiveStaffTab(navTab.key)}
-              className={`flex-1 flex flex-col items-center py-3 gap-1 transition-colors ${
+              className={`flex-1 flex flex-col items-center py-3 gap-1 transition-colors min-h-[60px] ${
                 activeStaffTab === navTab.key ? "text-primary" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <navTab.icon size={20} />
-              <span className="text-xs font-medium">{navTab.label}</span>
+              <navTab.icon size={22} />
+              <span className="text-[10px] sm:text-xs font-medium">{navTab.label}</span>
             </button>
           ))}
         </div>

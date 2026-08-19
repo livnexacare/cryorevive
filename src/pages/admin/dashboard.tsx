@@ -23,7 +23,7 @@ const SERVICE_LABELS: Record<string, string> = {
 
 type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "no_show" | "postponed";
 type PaymentStatus = "unpaid" | "paid" | "refunded" | "partial";
-type DashTab = "bookings" | "announcements" | "pricing" | "coupons" | "staff" | "slots" | "payroll";
+type DashTab = "bookings" | "announcements" | "pricing" | "coupons" | "staff" | "slots" | "payroll" | "members";
 type AnnouncementType = "general" | "offer" | "feature" | "event";
 type EventType = "marathon" | "corporate" | "sports" | "school" | "military" | "custom";
 type StaffRole = "receptionist" | "therapist" | "manager";
@@ -69,6 +69,26 @@ interface AttendanceRecord {
   check_in: string | null;
   check_out: string | null;
   notes: string | null;
+}
+
+type MembershipStatus = "active" | "expired" | "paused" | "cancelled";
+
+interface Membership {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_mobile: string;
+  package_type: string;
+  package_name: string;
+  sessions_total: number;
+  sessions_used: number;
+  sessions_remaining: number;
+  price_paid: number;
+  start_date: string;
+  end_date: string;
+  status: MembershipStatus;
+  notes: string | null;
+  created_at: string;
 }
 
 interface Announcement {
@@ -176,6 +196,14 @@ const PAY_TYPE_OPTIONS: { value: "daily" | "monthly"; label: string }[] = [
   { value: "monthly", label: "Monthly salary" },
 ];
 
+const MEMBERSHIP_PACKAGES: { key: string; label: string; sessions: number; price: number }[] = [
+  { key: "starter", label: "Starter", sessions: 8, price: 5999 },
+  { key: "athlete", label: "Athlete", sessions: 16, price: 9999 },
+  { key: "elite", label: "Elite", sessions: 30, price: 15999 },
+];
+
+const MEMBERSHIP_STATUS_FILTERS = ["all", "active", "expired", "paused", "cancelled"] as const;
+
 const ATTENDANCE_STATUS_OPTIONS: { value: AttendanceRecord["status"]; label: string }[] = [
   { value: "present", label: "Present" },
   { value: "absent", label: "Absent" },
@@ -271,6 +299,26 @@ export default function AdminDashboard() {
   const [attendanceForm, setAttendanceForm] = useState(emptyAttendanceForm);
   const [attendanceFormLoading, setAttendanceFormLoading] = useState(false);
   const [attendanceFormError, setAttendanceFormError] = useState("");
+
+  // Memberships state
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [membershipsLoading, setMembershipsLoading] = useState(false);
+  const [membershipsTick, setMembershipsTick] = useState(0);
+  const [memberFilter, setMemberFilter] = useState<typeof MEMBERSHIP_STATUS_FILTERS[number]>("all");
+  const [showAddMembership, setShowAddMembership] = useState(false);
+  const emptyMembershipForm = {
+    client_id: "", client_name: "", client_mobile: "",
+    package_type: "", sessions_total: 8, price_paid: 5999,
+    start_date: new Date().toISOString().split("T")[0],
+    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+  };
+  const [newMembership, setNewMembership] = useState(emptyMembershipForm);
+  const [membershipFormLoading, setMembershipFormLoading] = useState(false);
+  const [membershipFormError, setMembershipFormError] = useState("");
+  const [membershipClientQuery, setMembershipClientQuery] = useState("");
+  const [membershipClientSearching, setMembershipClientSearching] = useState(false);
+  const [useSessionMembershipId, setUseSessionMembershipId] = useState<string | null>(null);
+  const [useSessionServiceType, setUseSessionServiceType] = useState("");
 
   // Announcements state
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -510,6 +558,21 @@ export default function AdminDashboard() {
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab, attendanceStaffId, attendanceMonth, attendanceTick]);
 
+  // ── Fetch memberships ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "members") return;
+    let cancelled = false;
+    setMembershipsLoading(true);
+    const qs = memberFilter !== "all" ? `?status=${memberFilter}` : "";
+    fetch(`${API_URL}/api/memberships${qs}`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => r.json())
+      .then((data: Membership[]) => { if (!cancelled) setMemberships(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setMemberships([]); })
+      .finally(() => { if (!cancelled) setMembershipsLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, membershipsTick, memberFilter]);
+
   // ── Fetch custom slots ───────────────────────────────────────────────────
 
   useEffect(() => {
@@ -620,6 +683,72 @@ export default function AdminDashboard() {
       setAttendanceTick(t => t + 1);
     } catch (e: unknown) { setAttendanceFormError(e instanceof Error ? e.message : "Failed to mark attendance"); }
     finally { setAttendanceFormLoading(false); }
+  };
+
+  const searchMembershipClient = async () => {
+    if (!membershipClientQuery.trim()) return;
+    setMembershipClientSearching(true);
+    try {
+      const res = await fetch(`${API_URL}/api/clients/search?q=${encodeURIComponent(membershipClientQuery.trim())}`, {
+        headers: { "X-Staff-Key": ADMIN_KEY },
+      });
+      const data = await res.json();
+      const found = Array.isArray(data) ? data[0] : null;
+      if (found) {
+        setNewMembership(f => ({ ...f, client_id: found.id, client_name: found.full_name, client_mobile: found.mobile }));
+      }
+    } catch { /* no-op, user can retry */ }
+    finally { setMembershipClientSearching(false); }
+  };
+
+  const handleCreateMembership = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMembershipFormLoading(true); setMembershipFormError("");
+    try {
+      if (!newMembership.client_id) throw new Error("Search and select a client first");
+      if (!newMembership.package_type) throw new Error("Choose a package");
+      const res = await fetch(`${API_URL}/api/memberships`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify(newMembership),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      setShowAddMembership(false);
+      setNewMembership(emptyMembershipForm);
+      setMembershipClientQuery("");
+      setMembershipsTick(t => t + 1);
+    } catch (e: unknown) { setMembershipFormError(e instanceof Error ? e.message : "Failed to create membership"); }
+    finally { setMembershipFormLoading(false); }
+  };
+
+  const confirmUseSession = async () => {
+    if (!useSessionMembershipId || !useSessionServiceType) return;
+    try {
+      const res = await fetch(`${API_URL}/api/memberships/${useSessionMembershipId}/use-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ service_type: useSessionServiceType }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setUseSessionMembershipId(null);
+      setUseSessionServiceType("");
+      setMembershipsTick(t => t + 1);
+    } catch { alert("Failed to log session usage."); }
+  };
+
+  const toggleMembershipPause = async (id: string, currentStatus: MembershipStatus) => {
+    try {
+      const res = await fetch(`${API_URL}/api/memberships/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ status: currentStatus === "active" ? "paused" : "active" }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setMembershipsTick(t => t + 1);
+    } catch { alert("Failed to update membership."); }
   };
 
   const postAnnouncement = async (e: React.FormEvent) => {
@@ -977,65 +1106,65 @@ cryorevive.in | +91 08595850920`;
     <>
       <SEO title="Admin Dashboard - CryoRevive" />
       <div className="min-h-screen bg-background">
-        <header className="border-b border-border bg-card">
-          <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <header className="border-b border-border bg-card sticky top-0 z-20">
+          <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">CryoRevive Admin</h1>
-              <p className="text-sm text-muted-foreground">Management Dashboard</p>
+              <h1 className="text-base sm:text-2xl font-bold">CryoRevive Admin</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">Management Dashboard</p>
             </div>
-            <div className="flex items-center gap-4">
-              <Link href="/"><Button variant="outline" size="sm">View Site</Button></Link>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />Logout
+            <div className="flex items-center gap-2 sm:gap-4">
+              <Link href="/"><Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-3">View Site</Button></Link>
+              <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs sm:text-sm px-2 sm:px-3">
+                <LogOut className="w-4 h-4 sm:mr-2" /><span className="hidden sm:inline">Logout</span>
               </Button>
             </div>
           </div>
         </header>
 
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto px-4 py-4 sm:py-8">
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Bookings</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Total Bookings</CardTitle>
                 <Calendar className="w-4 h-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent><div className="text-2xl font-bold">{stats.total}</div></CardContent>
+              <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6"><div className="text-xl sm:text-2xl font-bold">{stats.total}</div></CardContent>
             </Card>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Pending</CardTitle>
                 <Clock className="w-4 h-4 text-yellow-500" />
               </CardHeader>
-              <CardContent><div className="text-2xl font-bold text-yellow-600">{stats.pending}</div></CardContent>
+              <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6"><div className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pending}</div></CardContent>
             </Card>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Confirmed</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Confirmed</CardTitle>
                 <CheckCircle2 className="w-4 h-4 text-green-500" />
               </CardHeader>
-              <CardContent><div className="text-2xl font-bold text-green-600">{stats.confirmed}</div></CardContent>
+              <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6"><div className="text-xl sm:text-2xl font-bold text-green-600">{stats.confirmed}</div></CardContent>
             </Card>
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Today&apos;s Bookings</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Today&apos;s Bookings</CardTitle>
                 <TrendingUp className="w-4 h-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent><div className="text-2xl font-bold">{stats.today}</div></CardContent>
+              <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6"><div className="text-xl sm:text-2xl font-bold">{stats.today}</div></CardContent>
             </Card>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-6 border-b border-border">
-            {(["bookings", "announcements", "pricing", "coupons", "staff", "slots", "payroll"] as DashTab[]).map(tab => {
-              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag, staff: Users, slots: Clock, payroll: Wallet };
-              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons", staff: "Staff", slots: "Slots", payroll: "Payroll" };
+          <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto scrollbar-hide sticky top-[57px] sm:top-[73px] z-10 bg-background">
+            {(["bookings", "announcements", "pricing", "coupons", "staff", "slots", "payroll", "members"] as DashTab[]).map(tab => {
+              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag, staff: Users, slots: Clock, payroll: Wallet, members: Users };
+              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons", staff: "Staff", slots: "Slots", payroll: "Payroll", members: "Members" };
               const Icon = icons[tab];
               return (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                  className={`flex-shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
                     activeTab === tab
                       ? "border-primary text-foreground"
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1080,71 +1209,147 @@ cryorevive.in | +91 08595850920`;
                   <div className="py-12 text-center text-muted-foreground">Loading bookings...</div>
                 ) : error ? (
                   <div className="py-12 text-center text-destructive">{error}</div>
+                ) : filtered.length === 0 ? (
+                  <div className="py-12 text-center text-muted-foreground">No bookings yet</div>
                 ) : (
-                  <div className="border rounded-lg overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead>
-                          <TableHead>Phone</TableHead><TableHead>Service</TableHead><TableHead>Date</TableHead>
-                          <TableHead>Time</TableHead><TableHead>Status</TableHead><TableHead>Payment</TableHead>
-                          <TableHead>Created</TableHead><TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filtered.length === 0 ? (
-                          <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No bookings yet</TableCell></TableRow>
-                        ) : filtered.map(b => (
-                          <>
-                            <TableRow key={b.id}>
-                              <TableCell className="font-mono text-xs text-muted-foreground">{b.id.slice(0, 8)}</TableCell>
-                              <TableCell className="font-medium">{b.name}</TableCell>
-                              <TableCell>{b.email}</TableCell>
-                              <TableCell>{b.phone}</TableCell>
-                              <TableCell>{SERVICE_LABELS[b.service_type] ?? b.service_type}</TableCell>
-                              <TableCell>{String(b.date).slice(0, 10)}</TableCell>
-                              <TableCell>{b.time_slot}</TableCell>
-                              <TableCell><StatusBadge status={b.status} /></TableCell>
-                              <TableCell><PaymentBadge status={b.payment_status} /></TableCell>
-                              <TableCell className="text-xs text-muted-foreground">{new Date(b.created_at).toLocaleDateString()}</TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
-                                  {b.status === "pending" && (
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "confirmed")}>
-                                      {actionLoading === b.id + "confirmed" && <Spinner className="h-3 w-3" />}
-                                      {actionLoading === b.id + "confirmed" ? "Confirming..." : "Confirm"}
+                  <>
+                    {/* Mobile: cards */}
+                    <div className="block md:hidden space-y-3">
+                      {filtered.map(b => (
+                        <div key={b.id} className="bg-card rounded-xl p-4 border border-border">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="text-xs text-muted-foreground font-mono">#{b.id.slice(0, 8).toUpperCase()}</p>
+                              <p className="text-foreground font-bold">{b.name}</p>
+                              <p className="text-muted-foreground text-sm">{b.phone}</p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <StatusBadge status={b.status} />
+                              <PaymentBadge status={b.payment_status} />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+                            <div>
+                              <p className="text-muted-foreground">Service</p>
+                              <p className="text-foreground">{SERVICE_LABELS[b.service_type] ?? b.service_type}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Date</p>
+                              <p className="text-foreground">{new Date(b.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Time</p>
+                              <p className="text-foreground">{b.time_slot}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" className="flex-1 h-9" onClick={() => setEditingBookingId(b.id)}>
+                              <Pencil className="w-3.5 h-3.5 mr-1.5" />Edit
+                            </Button>
+                            {b.status === "pending" && (
+                              <Button size="sm" className="flex-1 h-9 bg-green-600 hover:bg-green-700 text-white" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "confirmed")}>
+                                {actionLoading === b.id + "confirmed" ? <Spinner className="h-3 w-3" /> : "Confirm"}
+                              </Button>
+                            )}
+                            {(b.status === "pending" || b.status === "confirmed") && (
+                              <Button size="sm" variant="destructive" className="flex-1 h-9" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "cancelled")}>
+                                {actionLoading === b.id + "cancelled" ? <Spinner className="h-3 w-3" /> : "Cancel"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Mobile: full-screen edit modal */}
+                    {editingBookingId && (
+                      <div className="md:hidden fixed inset-0 z-50 bg-black/70 flex items-end justify-center" onClick={() => setEditingBookingId(null)}>
+                        <div className="w-full bg-card rounded-t-2xl p-5 border border-border max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="font-bold">Edit Booking</h3>
+                            <button onClick={() => setEditingBookingId(null)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+                          </div>
+                          {(() => {
+                            const b = filtered.find(x => x.id === editingBookingId);
+                            if (!b) return null;
+                            return (
+                              <BookingEditForm
+                                booking={b}
+                                apiUrl={API_URL}
+                                adminKey={ADMIN_KEY}
+                                onSaved={() => { setEditingBookingId(null); setTick(t => t + 1); }}
+                                onCancel={() => setEditingBookingId(null)}
+                              />
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Desktop: table */}
+                    <div className="hidden md:block border rounded-lg overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead>
+                            <TableHead>Phone</TableHead><TableHead>Service</TableHead><TableHead>Date</TableHead>
+                            <TableHead>Time</TableHead><TableHead>Status</TableHead><TableHead>Payment</TableHead>
+                            <TableHead>Created</TableHead><TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filtered.map(b => (
+                            <>
+                              <TableRow key={b.id}>
+                                <TableCell className="font-mono text-xs text-muted-foreground">{b.id.slice(0, 8)}</TableCell>
+                                <TableCell className="font-medium">{b.name}</TableCell>
+                                <TableCell>{b.email}</TableCell>
+                                <TableCell>{b.phone}</TableCell>
+                                <TableCell>{SERVICE_LABELS[b.service_type] ?? b.service_type}</TableCell>
+                                <TableCell>{String(b.date).slice(0, 10)}</TableCell>
+                                <TableCell>{b.time_slot}</TableCell>
+                                <TableCell><StatusBadge status={b.status} /></TableCell>
+                                <TableCell><PaymentBadge status={b.payment_status} /></TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{new Date(b.created_at).toLocaleDateString()}</TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
+                                    {b.status === "pending" && (
+                                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "confirmed")}>
+                                        {actionLoading === b.id + "confirmed" && <Spinner className="h-3 w-3" />}
+                                        {actionLoading === b.id + "confirmed" ? "Confirming..." : "Confirm"}
+                                      </Button>
+                                    )}
+                                    {(b.status === "pending" || b.status === "confirmed") && (
+                                      <Button size="sm" variant="destructive" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "cancelled")} className="flex items-center gap-1.5">
+                                        {actionLoading === b.id + "cancelled" && <Spinner className="h-3 w-3" />}
+                                        {actionLoading === b.id + "cancelled" ? "Cancelling..." : "Cancel"}
+                                      </Button>
+                                    )}
+                                    <Button size="sm" variant="outline" onClick={() => setEditingBookingId(editingBookingId === b.id ? null : b.id)} className="h-8 px-2">
+                                      <Pencil className="w-3.5 h-3.5" />
                                     </Button>
-                                  )}
-                                  {(b.status === "pending" || b.status === "confirmed") && (
-                                    <Button size="sm" variant="destructive" disabled={actionLoading !== null} onClick={() => updateStatus(b.id, "cancelled")} className="flex items-center gap-1.5">
-                                      {actionLoading === b.id + "cancelled" && <Spinner className="h-3 w-3" />}
-                                      {actionLoading === b.id + "cancelled" ? "Cancelling..." : "Cancel"}
-                                    </Button>
-                                  )}
-                                  <Button size="sm" variant="outline" onClick={() => setEditingBookingId(editingBookingId === b.id ? null : b.id)} className="h-8 px-2">
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                            {editingBookingId === b.id && (
-                              <TableRow key={b.id + "-edit"}>
-                                <TableCell colSpan={11} className="bg-muted/30">
-                                  <BookingEditForm
-                                    booking={b}
-                                    apiUrl={API_URL}
-                                    adminKey={ADMIN_KEY}
-                                    onSaved={() => { setEditingBookingId(null); setTick(t => t + 1); }}
-                                    onCancel={() => setEditingBookingId(null)}
-                                  />
+                                  </div>
                                 </TableCell>
                               </TableRow>
-                            )}
-                          </>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                              {editingBookingId === b.id && (
+                                <TableRow key={b.id + "-edit"}>
+                                  <TableCell colSpan={11} className="bg-muted/30">
+                                    <BookingEditForm
+                                      booking={b}
+                                      apiUrl={API_URL}
+                                      adminKey={ADMIN_KEY}
+                                      onSaved={() => { setEditingBookingId(null); setTick(t => t + 1); }}
+                                      onCancel={() => setEditingBookingId(null)}
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -2283,6 +2488,208 @@ cryorevive.in | +91 08595850920`;
                   )}
                 </CardContent>
               </Card>
+            </div>
+          )}
+
+          {/* ══ Members Tab ══ */}
+          {activeTab === "members" && (
+            <div className="space-y-6">
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: "Active", value: memberships.filter(m => m.status === "active").length, color: "text-green-500" },
+                  { label: "Expired", value: memberships.filter(m => m.status === "expired").length, color: "text-destructive" },
+                  { label: "Total Sessions", value: memberships.reduce((s, m) => s + m.sessions_total, 0), color: "text-primary" },
+                  { label: "Used Sessions", value: memberships.reduce((s, m) => s + m.sessions_used, 0), color: "text-yellow-500" },
+                ].map(card => (
+                  <div key={card.label} className="bg-card rounded-xl p-3 border border-border text-center">
+                    <p className={`text-lg sm:text-xl font-black ${card.color}`}>{card.value}</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">{card.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Status filter */}
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                {MEMBERSHIP_STATUS_FILTERS.map(s => (
+                  <Button key={s} variant={memberFilter === s ? "default" : "outline"} size="sm" className="flex-shrink-0" onClick={() => setMemberFilter(s)}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </Button>
+                ))}
+              </div>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Memberships</CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setShowAddMembership(v => !v)}>
+                    {showAddMembership ? "Cancel" : "+ Add Membership"}
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {showAddMembership && (
+                    <form onSubmit={handleCreateMembership} className="rounded-lg border border-primary/30 p-4 space-y-4">
+                      <h3 className="font-bold text-primary">New Membership</h3>
+
+                      {/* Package selector */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {MEMBERSHIP_PACKAGES.map(pkg => (
+                          <button
+                            type="button"
+                            key={pkg.key}
+                            onClick={() => setNewMembership(p => ({ ...p, package_type: pkg.key, sessions_total: pkg.sessions, price_paid: pkg.price }))}
+                            className={`p-3 rounded-xl border text-center transition-all ${
+                              newMembership.package_type === pkg.key ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                            }`}
+                          >
+                            <p className="font-bold text-sm">{pkg.label}</p>
+                            <p className="text-primary text-xs">{fmt(pkg.price)}</p>
+                            <p className="text-muted-foreground text-xs">{pkg.sessions} sessions</p>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Client search */}
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Client Mobile or Name *</label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={membershipClientQuery}
+                            onChange={e => setMembershipClientQuery(e.target.value)}
+                            placeholder="Search by mobile or name"
+                          />
+                          <Button type="button" variant="outline" disabled={membershipClientSearching} onClick={searchMembershipClient}>
+                            {membershipClientSearching ? <Spinner className="h-3.5 w-3.5" /> : "Find"}
+                          </Button>
+                        </div>
+                        {newMembership.client_name && (
+                          <p className="text-green-500 text-xs mt-1">✓ {newMembership.client_name} ({newMembership.client_mobile})</p>
+                        )}
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Sessions</label>
+                          <Input type="number" min={1} value={newMembership.sessions_total} onChange={e => setNewMembership(p => ({ ...p, sessions_total: parseInt(e.target.value) || 0 }))} />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Price Paid (₹)</label>
+                          <Input type="number" min={0} value={newMembership.price_paid} onChange={e => setNewMembership(p => ({ ...p, price_paid: parseInt(e.target.value) || 0 }))} />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Start Date</label>
+                          <Input type="date" value={newMembership.start_date} onChange={e => setNewMembership(p => ({ ...p, start_date: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">End Date</label>
+                          <Input type="date" value={newMembership.end_date} onChange={e => setNewMembership(p => ({ ...p, end_date: e.target.value }))} />
+                        </div>
+                      </div>
+
+                      {membershipFormError && <p className="text-sm text-destructive">{membershipFormError}</p>}
+                      <Button type="submit" disabled={membershipFormLoading || !newMembership.client_id || !newMembership.package_type} className="flex items-center gap-2">
+                        {membershipFormLoading && <Spinner />}
+                        {membershipFormLoading ? "Creating..." : "Create Membership"}
+                      </Button>
+                    </form>
+                  )}
+
+                  {membershipsLoading ? (
+                    <div className="py-8 text-center text-muted-foreground">Loading memberships...</div>
+                  ) : memberships.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">No memberships yet. Add one above.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {memberships.map(m => {
+                        const pct = m.sessions_total > 0 ? Math.round((m.sessions_used / m.sessions_total) * 100) : 0;
+                        const isExpiring = m.status === "active" && new Date(m.end_date) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                        return (
+                          <div key={m.id} className={`rounded-xl border p-4 ${m.status === "active" ? (isExpiring ? "border-yellow-500/40" : "border-border") : "border-destructive/20 opacity-70"}`}>
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <p className="font-bold">{m.client_name}</p>
+                                <p className="text-muted-foreground text-sm">{m.client_mobile}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">{m.package_name}</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.status === "active" ? "bg-green-500/15 text-green-500" : "bg-destructive/15 text-destructive"}`}>
+                                    {m.status}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-2xl font-black">{m.sessions_remaining}</p>
+                                <p className="text-muted-foreground text-xs">sessions left</p>
+                              </div>
+                            </div>
+
+                            <div className="mb-3">
+                              <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                <span>{m.sessions_used} used</span>
+                                <span>{m.sessions_total} total</span>
+                              </div>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all ${pct >= 80 ? "bg-destructive" : pct >= 60 ? "bg-yellow-500" : "bg-primary"}`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between text-xs text-muted-foreground mb-3">
+                              <span>{new Date(m.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                              <span>→</span>
+                              <span className={isExpiring ? "text-yellow-500 font-bold" : ""}>
+                                {new Date(m.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                {isExpiring && " ⚠"}
+                              </span>
+                            </div>
+
+                            {m.status === "active" && (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="flex-1"
+                                  disabled={m.sessions_remaining <= 0}
+                                  onClick={() => { setUseSessionMembershipId(m.id); setUseSessionServiceType(""); }}
+                                >
+                                  ✓ Use Session
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => toggleMembershipPause(m.id, m.status)}>Pause</Button>
+                              </div>
+                            )}
+                            {m.status === "paused" && (
+                              <Button size="sm" variant="outline" className="w-full" onClick={() => toggleMembershipPause(m.id, m.status)}>
+                                Resume Membership
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Use-session service picker modal */}
+          {useSessionMembershipId && (
+            <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setUseSessionMembershipId(null)}>
+              <div className="w-full sm:max-w-sm bg-card rounded-t-2xl sm:rounded-2xl p-5 border border-border" onClick={e => e.stopPropagation()}>
+                <h3 className="font-bold mb-3">Log Session Usage</h3>
+                <label className="text-sm font-medium mb-1 block">Service Used</label>
+                <select
+                  value={useSessionServiceType}
+                  onChange={e => setUseSessionServiceType(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mb-4"
+                >
+                  <option value="">Select service...</option>
+                  {Object.entries(SERVICE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select>
+                <div className="flex gap-2">
+                  <Button className="flex-1" disabled={!useSessionServiceType} onClick={confirmUseSession}>Confirm</Button>
+                  <Button variant="outline" className="flex-1" onClick={() => setUseSessionMembershipId(null)}>Cancel</Button>
+                </div>
+              </div>
             </div>
           )}
         </main>
