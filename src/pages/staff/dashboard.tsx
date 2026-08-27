@@ -4,7 +4,7 @@ import { SEO } from "@/components/SEO";
 import { format, addDays } from "date-fns";
 import {
   Search, UserPlus, Calendar, Printer, LogOut, ChevronRight,
-  Check, Phone, User, Heart, Loader2, Zap,
+  Check, Phone, User, Heart, Loader2, Zap, CreditCard,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { fetchLivePrices, getServicePrice, formatPrice, type ServicePrice } from "@/lib/pricing";
@@ -12,7 +12,7 @@ import { fetchLivePrices, getServicePrice, formatPrice, type ServicePrice } from
 const STAFF_KEY = process.env.NEXT_PUBLIC_STAFF_KEY || "";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
 
-type StaffTab = "clients" | "bookings" | "events" | "profile";
+type StaffTab = "clients" | "bookings" | "events" | "profile" | "members";
 
 type Tab = "search" | "form" | "book" | "confirm";
 
@@ -104,6 +104,32 @@ interface PayrollRecord {
   amount_pending: number;
 }
 
+interface MembershipRecord {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_mobile: string;
+  package_type: string;
+  package_name: string;
+  sessions_total: number;
+  sessions_used: number;
+  sessions_remaining: number;
+  price_paid: number;
+  start_date: string;
+  end_date: string;
+  status: "active" | "expired" | "paused" | "cancelled";
+}
+
+const MEMBERSHIP_PACKAGES: { key: string; label: string; sessions: number; price: number }[] = [
+  { key: "starter", label: "Starter", sessions: 8, price: 5999 },
+  { key: "athlete", label: "Athlete", sessions: 16, price: 9999 },
+  { key: "elite", label: "Elite", sessions: 30, price: 15999 },
+];
+
+const MEMBERSHIP_PACKAGE_NAMES: Record<string, string> = {
+  starter: "Starter", athlete: "Athlete", elite: "Elite", custom: "Custom",
+};
+
 const formatServiceLabel = (s: string) =>
   s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -117,6 +143,26 @@ export default function StaffDashboard() {
   const [searching, setSearching] = useState(false);
   const [client, setClient] = useState<Client>(EMPTY_CLIENT);
   const [clientMembership, setClientMembership] = useState<ClientMembership | null>(null);
+
+  // New-client membership add-on
+  const [addMembership, setAddMembership] = useState(false);
+  const emptyMembershipData = {
+    package_type: "starter",
+    sessions_total: 8,
+    price_paid: 5999,
+    start_date: new Date().toISOString().split("T")[0],
+    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+  };
+  const [membershipData, setMembershipData] = useState(emptyMembershipData);
+  const [membershipError, setMembershipError] = useState("");
+
+  // Staff Members tab
+  const [staffMemberships, setStaffMemberships] = useState<MembershipRecord[]>([]);
+  const [staffMembershipsLoading, setStaffMembershipsLoading] = useState(false);
+  const [memberSearchQ, setMemberSearchQ] = useState("");
+  const [useSessionMembership, setUseSessionMembership] = useState<MembershipRecord | null>(null);
+  const [useSessionServiceType, setUseSessionServiceType] = useState("");
+  const [useSessionSaving, setUseSessionSaving] = useState(false);
 
   // Live pricing
   const [livePrices, setLivePrices] = useState<ServicePrice[]>([]);
@@ -252,6 +298,44 @@ export default function StaffDashboard() {
     }
   }, [activeStaffTab, fetchStaffBookings]);
 
+  const fetchStaffMemberships = useCallback(async () => {
+    setStaffMembershipsLoading(true);
+    try {
+      const url = memberSearchQ.trim().length >= 2
+        ? `${API_URL}/api/memberships/search?q=${encodeURIComponent(memberSearchQ.trim())}`
+        : `${API_URL}/api/memberships`;
+      const res = await fetch(url, { headers: { "X-Admin-Key": ADMIN_KEY } });
+      const data = await res.json();
+      setStaffMemberships(res.ok && Array.isArray(data) ? data : []);
+    } catch {
+      setStaffMemberships([]);
+    }
+    setStaffMembershipsLoading(false);
+  }, [memberSearchQ]);
+
+  useEffect(() => {
+    if (activeStaffTab === "members") fetchStaffMemberships();
+  }, [activeStaffTab, fetchStaffMemberships]);
+
+  const confirmStaffUseSession = async () => {
+    if (!useSessionMembership || !useSessionServiceType) return;
+    setUseSessionSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/memberships/${useSessionMembership.id}/use-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({ service_type: useSessionServiceType, staff_name: staffInfo?.full_name || "Staff" }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setUseSessionMembership(null);
+      setUseSessionServiceType("");
+      fetchStaffMemberships();
+    } catch {
+      alert("Failed to mark session used.");
+    }
+    setUseSessionSaving(false);
+  };
+
   const filteredBookings =
     bookingFilter === "all" ? bookings : bookings.filter((b) => b.status === bookingFilter);
 
@@ -286,6 +370,7 @@ export default function StaffDashboard() {
 
     setSaving(true);
     setError("");
+    setMembershipError("");
 
     try {
       const clientRes = await fetch(`${API_URL}/api/clients`, {
@@ -296,6 +381,27 @@ export default function StaffDashboard() {
       const savedClient = await clientRes.json();
       if (!clientRes.ok) throw new Error(savedClient.detail || "Failed to save client");
       setClient((p) => ({ ...p, id: savedClient.id, total_sessions: savedClient.total_sessions }));
+
+      if (addMembership && membershipData.package_type) {
+        try {
+          const membershipRes = await fetch(`${API_URL}/api/memberships`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+            body: JSON.stringify({
+              client_id: savedClient.id,
+              client_name: client.full_name,
+              client_mobile: client.mobile,
+              package_type: membershipData.package_type,
+              package_name: MEMBERSHIP_PACKAGE_NAMES[membershipData.package_type] ?? "Custom",
+              sessions_total: membershipData.sessions_total,
+              price_paid: membershipData.price_paid,
+              start_date: membershipData.start_date,
+              end_date: membershipData.end_date,
+            }),
+          });
+          if (!membershipRes.ok) setMembershipError("Booking saved, but the membership package could not be created.");
+        } catch { setMembershipError("Booking saved, but the membership package could not be created."); }
+      }
 
       const bookingRes = await fetch(`${API_URL}/api/staff/booking`, {
         method: "POST",
@@ -345,6 +451,9 @@ export default function StaffDashboard() {
   const startNewClient = () => {
     setClient(EMPTY_CLIENT);
     setClientMembership(null);
+    setAddMembership(false);
+    setMembershipData(emptyMembershipData);
+    setMembershipError("");
     setConsent(false);
     setSelectedServiceType("");
     setSelectedSlot("");
@@ -625,6 +734,103 @@ export default function StaffDashboard() {
                   />
                 </button>
               </div>
+
+              {!client.id && !clientMembership && (
+                <div className="bg-card rounded-lg p-4 border border-primary/20">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-bold text-primary text-sm flex items-center gap-2">
+                      <CreditCard size={16} /> Add Monthly Package
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setAddMembership((v) => !v)}
+                      className={`w-10 h-6 rounded-full transition-colors ${addMembership ? "bg-primary" : "bg-muted"}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full mx-1 transition-transform ${addMembership ? "translate-x-4" : ""}`} />
+                    </button>
+                  </div>
+
+                  {addMembership && (
+                    <div className="space-y-3 mt-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        {MEMBERSHIP_PACKAGES.map((pkg) => (
+                          <button
+                            key={pkg.key}
+                            type="button"
+                            onClick={() => setMembershipData((p) => ({ ...p, package_type: pkg.key, sessions_total: pkg.sessions, price_paid: pkg.price }))}
+                            className={`p-2.5 rounded-lg border text-center transition-colors ${
+                              membershipData.package_type === pkg.key ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
+                            }`}
+                          >
+                            <p className="text-foreground font-bold text-xs">{pkg.label}</p>
+                            <p className="text-primary text-xs">₹{pkg.price.toLocaleString("en-IN")}</p>
+                            <p className="text-muted-foreground text-xs">{pkg.sessions} sessions</p>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Sessions</label>
+                          <input
+                            type="number"
+                            value={membershipData.sessions_total}
+                            onChange={(e) => setMembershipData((p) => ({ ...p, sessions_total: parseInt(e.target.value) || 0, package_type: "custom" }))}
+                            className="w-full h-10 px-3 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Price (₹)</label>
+                          <input
+                            type="number"
+                            value={membershipData.price_paid}
+                            onChange={(e) => setMembershipData((p) => ({ ...p, price_paid: parseInt(e.target.value) || 0, package_type: "custom" }))}
+                            className="w-full h-10 px-3 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Start</label>
+                          <input
+                            type="date"
+                            value={membershipData.start_date}
+                            onChange={(e) => setMembershipData((p) => ({ ...p, start_date: e.target.value }))}
+                            className="w-full h-10 px-3 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">End</label>
+                          <input
+                            type="date"
+                            value={membershipData.end_date}
+                            onChange={(e) => setMembershipData((p) => ({ ...p, end_date: e.target.value }))}
+                            className="w-full h-10 px-3 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-muted/50 rounded-lg p-3 text-xs">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Package</span>
+                          <span className="text-foreground capitalize">{membershipData.package_type}</span>
+                        </div>
+                        <div className="flex justify-between text-muted-foreground mt-1">
+                          <span>Sessions</span>
+                          <span className="text-foreground">{membershipData.sessions_total}</span>
+                        </div>
+                        <div className="flex justify-between font-bold mt-2 pt-2 border-t border-border">
+                          <span className="text-muted-foreground">Total</span>
+                          <span className="text-primary">₹{membershipData.price_paid.toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {membershipError && <p className="text-destructive text-xs">{membershipError}</p>}
 
               <button
                 onClick={() => setTab("book")}
@@ -1175,6 +1381,165 @@ export default function StaffDashboard() {
           </div>
         )}
 
+        {/* ── Members ── */}
+        {activeStaffTab === "members" && (
+          <div className="px-4 pt-4 pb-24">
+            <h2 className="text-foreground font-bold text-lg mb-4">Members</h2>
+
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={memberSearchQ}
+                onChange={(e) => setMemberSearchQ(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && fetchStaffMemberships()}
+                placeholder="Search by name or mobile..."
+                className="flex-1 h-11 px-4 bg-background border border-input rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                onClick={fetchStaffMemberships}
+                className="px-4 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                <Search size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[
+                { label: "Active", value: staffMemberships.filter((m) => m.status === "active").length, color: "text-green-500" },
+                {
+                  label: "Expiring",
+                  value: staffMemberships.filter((m) => {
+                    const d = Math.ceil((new Date(m.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    return d <= 7 && d > 0 && m.status === "active";
+                  }).length,
+                  color: "text-yellow-500",
+                },
+                { label: "Total", value: staffMemberships.length, color: "text-foreground" },
+              ].map((s) => (
+                <div key={s.label} className="bg-card rounded-xl p-3 border border-border text-center">
+                  <p className={`text-xl font-black ${s.color}`}>{s.value}</p>
+                  <p className="text-muted-foreground text-xs">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {staffMembershipsLoading ? (
+              <div className="py-12 text-center text-muted-foreground text-sm">Loading members...</div>
+            ) : staffMemberships.length === 0 ? (
+              <div className="text-center py-12">
+                <CreditCard size={32} className="text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground text-sm">No members found</p>
+              </div>
+            ) : (
+              staffMemberships.map((m) => {
+                const pct = m.sessions_total > 0 ? Math.round((m.sessions_used / m.sessions_total) * 100) : 0;
+                const daysLeft = Math.ceil((new Date(m.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                const isExpiringSoon = daysLeft <= 7 && daysLeft > 0;
+                return (
+                  <div key={m.id} className={`bg-card rounded-xl border mb-3 overflow-hidden ${isExpiringSoon ? "border-yellow-500/40" : "border-border"}`}>
+                    <div className={`h-1 ${m.package_type === "elite" ? "bg-purple-500" : m.package_type === "athlete" ? "bg-blue-500" : "bg-green-500"}`} />
+                    <div className="p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <p className="text-foreground font-bold">{m.client_name}</p>
+                          <p className="text-muted-foreground text-sm">{m.client_mobile}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          m.package_type === "elite" ? "bg-purple-500/20 text-purple-400" :
+                          m.package_type === "athlete" ? "bg-blue-500/20 text-blue-400" :
+                          "bg-green-500/20 text-green-400"
+                        }`}>
+                          {m.package_name}
+                        </span>
+                      </div>
+
+                      <div className="bg-muted/50 rounded-xl p-3 mb-3">
+                        <p className="text-muted-foreground text-xs uppercase tracking-wider mb-2">Sessions</p>
+                        <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                          <div>
+                            <p className="text-xl font-black text-foreground">{m.sessions_total}</p>
+                            <p className="text-muted-foreground text-xs">Given</p>
+                          </div>
+                          <div>
+                            <p className="text-xl font-black text-yellow-500">{m.sessions_used}</p>
+                            <p className="text-muted-foreground text-xs">Taken</p>
+                          </div>
+                          <div>
+                            <p className={`text-xl font-black ${m.sessions_remaining <= 0 ? "text-destructive" : m.sessions_remaining <= 3 ? "text-yellow-500" : "text-green-500"}`}>
+                              {m.sessions_remaining}
+                            </p>
+                            <p className="text-muted-foreground text-xs">Pending</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-muted rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all ${pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-yellow-500" : "bg-primary"}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className={`flex justify-between text-xs px-3 py-2 rounded-lg mb-3 ${
+                        isExpiringSoon ? "bg-yellow-500/10 text-yellow-500" : daysLeft <= 0 ? "bg-destructive/10 text-destructive" : "bg-muted/40 text-muted-foreground"
+                      }`}>
+                        <span>Expires: {new Date(m.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                        <span className="font-bold">
+                          {daysLeft <= 0 ? "Expired" : isExpiringSoon ? `${daysLeft}d left ⚠` : `${daysLeft} days`}
+                        </span>
+                      </div>
+
+                      {m.status === "active" && m.sessions_remaining > 0 && (
+                        <button
+                          onClick={() => { setUseSessionMembership(m); setUseSessionServiceType(""); }}
+                          className="w-full py-2.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold transition-colors"
+                        >
+                          ✓ Mark Session Used
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* ── Use-session modal ── */}
+        {useSessionMembership && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setUseSessionMembership(null)}>
+            <div className="w-full sm:max-w-sm bg-card rounded-t-2xl sm:rounded-2xl p-5 border border-border" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-foreground font-bold mb-1">Mark Session Used</h3>
+              <p className="text-muted-foreground text-sm mb-3">{useSessionMembership.client_name}</p>
+              <label className="block text-xs text-muted-foreground mb-1">Service Used</label>
+              <select
+                value={useSessionServiceType}
+                onChange={(e) => setUseSessionServiceType(e.target.value)}
+                className="w-full h-11 px-3 bg-background border border-input rounded-lg text-foreground text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select service...</option>
+                {livePrices.map((s) => (
+                  <option key={s.service_type} value={s.service_type}>{formatServiceLabel(s.service_type)}</option>
+                ))}
+              </select>
+              <div className="flex gap-2">
+                <button
+                  onClick={confirmStaffUseSession}
+                  disabled={!useSessionServiceType || useSessionSaving}
+                  className="flex-1 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg font-bold transition-colors"
+                >
+                  {useSessionSaving ? "Saving..." : "Confirm"}
+                </button>
+                <button
+                  onClick={() => setUseSessionMembership(null)}
+                  className="flex-1 py-2.5 border border-border rounded-lg text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Bottom nav ── */}
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border flex z-10 no-print safe-area-inset-bottom">
           {(
@@ -1182,6 +1547,7 @@ export default function StaffDashboard() {
               { key: "clients", label: "Clients", icon: UserPlus },
               { key: "bookings", label: "Bookings", icon: Calendar },
               { key: "events", label: "Events", icon: Zap },
+              { key: "members", label: "Members", icon: CreditCard },
               { key: "profile", label: "Profile", icon: User },
             ] as { key: StaffTab; label: string; icon: typeof UserPlus }[]
           ).map((navTab) => (

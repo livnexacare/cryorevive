@@ -308,15 +308,16 @@ export default function AdminDashboard() {
   const [showAddMembership, setShowAddMembership] = useState(false);
   const emptyMembershipForm = {
     client_id: "", client_name: "", client_mobile: "",
-    package_type: "", sessions_total: 8, price_paid: 5999,
+    package_type: "starter", sessions_total: 8, price_paid: 5999,
     start_date: new Date().toISOString().split("T")[0],
     end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
   };
   const [newMembership, setNewMembership] = useState(emptyMembershipForm);
   const [membershipFormLoading, setMembershipFormLoading] = useState(false);
   const [membershipFormError, setMembershipFormError] = useState("");
-  const [membershipClientQuery, setMembershipClientQuery] = useState("");
-  const [membershipClientSearching, setMembershipClientSearching] = useState(false);
+  const [clientFound, setClientFound] = useState<boolean | null>(null);
+  const [checkingClient, setCheckingClient] = useState(false);
+  const [showCustomPackage, setShowCustomPackage] = useState(false);
   const [useSessionMembershipId, setUseSessionMembershipId] = useState<string | null>(null);
   const [useSessionServiceType, setUseSessionServiceType] = useState("");
 
@@ -685,32 +686,64 @@ export default function AdminDashboard() {
     finally { setAttendanceFormLoading(false); }
   };
 
-  const searchMembershipClient = async () => {
-    if (!membershipClientQuery.trim()) return;
-    setMembershipClientSearching(true);
+  const checkClientByMobile = async () => {
+    const mobile = newMembership.client_mobile.trim();
+    if (mobile.length < 10) { setClientFound(null); return; }
+    setCheckingClient(true);
     try {
-      const res = await fetch(`${API_URL}/api/clients/search?q=${encodeURIComponent(membershipClientQuery.trim())}`, {
+      const res = await fetch(`${API_URL}/api/clients/search?q=${encodeURIComponent(mobile)}`, {
         headers: { "X-Staff-Key": ADMIN_KEY },
       });
       const data = await res.json();
-      const found = Array.isArray(data) ? data[0] : null;
+      const found = Array.isArray(data) ? data.find((c: { mobile: string }) => c.mobile === mobile) : null;
       if (found) {
-        setNewMembership(f => ({ ...f, client_id: found.id, client_name: found.full_name, client_mobile: found.mobile }));
+        setNewMembership(f => ({ ...f, client_id: found.id, client_name: f.client_name || found.full_name }));
+        setClientFound(true);
+      } else {
+        setNewMembership(f => ({ ...f, client_id: "" }));
+        setClientFound(false);
       }
-    } catch { /* no-op, user can retry */ }
-    finally { setMembershipClientSearching(false); }
+    } catch { setClientFound(null); }
+    finally { setCheckingClient(false); }
+  };
+
+  // Resolves a client_id for the membership without ever overwriting an existing
+  // client's intake data — POST /api/clients is an upsert-by-mobile that would
+  // blank out health/emergency fields for an existing client if called here.
+  const resolveMembershipClientId = async (): Promise<string> => {
+    if (newMembership.client_id) return newMembership.client_id;
+    const mobile = newMembership.client_mobile.trim();
+    const searchRes = await fetch(`${API_URL}/api/clients/search?q=${encodeURIComponent(mobile)}`, {
+      headers: { "X-Staff-Key": ADMIN_KEY },
+    });
+    const searchData = await searchRes.json();
+    const existing = Array.isArray(searchData) ? searchData.find((c: { mobile: string }) => c.mobile === mobile) : null;
+    if (existing) return existing.id;
+
+    const createRes = await fetch(`${API_URL}/api/clients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Staff-Key": ADMIN_KEY },
+      body: JSON.stringify({ full_name: newMembership.client_name.trim(), mobile, first_time: true }),
+    });
+    const created = await createRes.json();
+    if (!createRes.ok) throw new Error(created.detail ?? "Failed to create client record");
+    return created.id;
   };
 
   const handleCreateMembership = async (e: React.FormEvent) => {
     e.preventDefault();
     setMembershipFormLoading(true); setMembershipFormError("");
     try {
-      if (!newMembership.client_id) throw new Error("Search and select a client first");
+      if (!newMembership.client_name.trim()) throw new Error("Client name is required");
+      if (!newMembership.client_mobile.trim()) throw new Error("Client mobile is required");
       if (!newMembership.package_type) throw new Error("Choose a package");
+
+      const clientId = await resolveMembershipClientId();
+
       const res = await fetch(`${API_URL}/api/memberships`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
-        body: JSON.stringify(newMembership),
+        body: JSON.stringify({ ...newMembership, client_id: clientId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { detail?: string };
@@ -718,7 +751,8 @@ export default function AdminDashboard() {
       }
       setShowAddMembership(false);
       setNewMembership(emptyMembershipForm);
-      setMembershipClientQuery("");
+      setClientFound(null);
+      setShowCustomPackage(false);
       setMembershipsTick(t => t + 1);
     } catch (e: unknown) { setMembershipFormError(e instanceof Error ? e.message : "Failed to create membership"); }
     finally { setMembershipFormLoading(false); }
@@ -2536,9 +2570,9 @@ cryorevive.in | +91 08595850920`;
                           <button
                             type="button"
                             key={pkg.key}
-                            onClick={() => setNewMembership(p => ({ ...p, package_type: pkg.key, sessions_total: pkg.sessions, price_paid: pkg.price }))}
+                            onClick={() => { setNewMembership(p => ({ ...p, package_type: pkg.key, sessions_total: pkg.sessions, price_paid: pkg.price })); setShowCustomPackage(false); }}
                             className={`p-3 rounded-xl border text-center transition-all ${
-                              newMembership.package_type === pkg.key ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                              newMembership.package_type === pkg.key && !showCustomPackage ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
                             }`}
                           >
                             <p className="font-bold text-sm">{pkg.label}</p>
@@ -2548,33 +2582,58 @@ cryorevive.in | +91 08595850920`;
                         ))}
                       </div>
 
-                      {/* Client search */}
                       <div>
-                        <label className="text-sm font-medium mb-1 block">Client Mobile or Name *</label>
-                        <div className="flex gap-2">
-                          <Input
-                            value={membershipClientQuery}
-                            onChange={e => setMembershipClientQuery(e.target.value)}
-                            placeholder="Search by mobile or name"
-                          />
-                          <Button type="button" variant="outline" disabled={membershipClientSearching} onClick={searchMembershipClient}>
-                            {membershipClientSearching ? <Spinner className="h-3.5 w-3.5" /> : "Find"}
-                          </Button>
-                        </div>
-                        {newMembership.client_name && (
-                          <p className="text-green-500 text-xs mt-1">✓ {newMembership.client_name} ({newMembership.client_mobile})</p>
+                        <button
+                          type="button"
+                          onClick={() => { setShowCustomPackage(v => !v); setNewMembership(p => ({ ...p, package_type: "custom" })); }}
+                          className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          {showCustomPackage ? "− Hide custom package" : "+ Custom package"}
+                        </button>
+                        {showCustomPackage && (
+                          <div className="grid grid-cols-2 gap-3 mt-2">
+                            <div>
+                              <label className="text-xs text-muted-foreground mb-1 block">Sessions</label>
+                              <Input type="number" min={1} value={newMembership.sessions_total} onChange={e => setNewMembership(p => ({ ...p, sessions_total: parseInt(e.target.value) || 0, package_type: "custom" }))} />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground mb-1 block">Price (₹)</label>
+                              <Input type="number" min={0} value={newMembership.price_paid} onChange={e => setNewMembership(p => ({ ...p, price_paid: parseInt(e.target.value) || 0, package_type: "custom" }))} />
+                            </div>
+                          </div>
                         )}
                       </div>
 
+                      {/* Client details — no lookup required, resolved on submit */}
                       <div className="grid sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-sm font-medium mb-1 block">Sessions</label>
-                          <Input type="number" min={1} value={newMembership.sessions_total} onChange={e => setNewMembership(p => ({ ...p, sessions_total: parseInt(e.target.value) || 0 }))} />
+                          <label className="text-sm font-medium mb-1 block">Client Name *</label>
+                          <Input
+                            value={newMembership.client_name}
+                            onChange={e => setNewMembership(p => ({ ...p, client_name: e.target.value }))}
+                            placeholder="Full name"
+                          />
                         </div>
                         <div>
-                          <label className="text-sm font-medium mb-1 block">Price Paid (₹)</label>
-                          <Input type="number" min={0} value={newMembership.price_paid} onChange={e => setNewMembership(p => ({ ...p, price_paid: parseInt(e.target.value) || 0 }))} />
+                          <label className="text-sm font-medium mb-1 block">Mobile Number *</label>
+                          <Input
+                            type="tel"
+                            value={newMembership.client_mobile}
+                            onChange={e => { setNewMembership(p => ({ ...p, client_mobile: e.target.value, client_id: "" })); setClientFound(null); }}
+                            onBlur={checkClientByMobile}
+                            placeholder="10-digit mobile"
+                          />
+                          {checkingClient && <p className="text-muted-foreground text-xs mt-1">Checking...</p>}
+                          {!checkingClient && clientFound === true && (
+                            <p className="text-green-500 text-xs mt-1">✓ Existing client found</p>
+                          )}
+                          {!checkingClient && clientFound === false && (
+                            <p className="text-yellow-500 text-xs mt-1">New client — will be created automatically</p>
+                          )}
                         </div>
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-3">
                         <div>
                           <label className="text-sm font-medium mb-1 block">Start Date</label>
                           <Input type="date" value={newMembership.start_date} onChange={e => setNewMembership(p => ({ ...p, start_date: e.target.value }))} />
@@ -2585,8 +2644,26 @@ cryorevive.in | +91 08595850920`;
                         </div>
                       </div>
 
+                      {/* Live summary */}
+                      {newMembership.sessions_total > 0 && (
+                        <div className="bg-muted/50 rounded-xl p-3 text-sm space-y-1">
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Package</span>
+                            <span className="text-foreground font-medium capitalize">{newMembership.package_type}</span>
+                          </div>
+                          <div className="flex justify-between text-muted-foreground">
+                            <span>Sessions</span>
+                            <span className="text-foreground font-medium">{newMembership.sessions_total}</span>
+                          </div>
+                          <div className="flex justify-between font-bold border-t border-border pt-2 mt-2">
+                            <span className="text-muted-foreground">Total Paid</span>
+                            <span className="text-primary">{fmt(newMembership.price_paid)}</span>
+                          </div>
+                        </div>
+                      )}
+
                       {membershipFormError && <p className="text-sm text-destructive">{membershipFormError}</p>}
-                      <Button type="submit" disabled={membershipFormLoading || !newMembership.client_id || !newMembership.package_type} className="flex items-center gap-2">
+                      <Button type="submit" disabled={membershipFormLoading || !newMembership.client_name.trim() || !newMembership.client_mobile.trim() || !newMembership.package_type} className="flex items-center gap-2">
                         {membershipFormLoading && <Spinner />}
                         {membershipFormLoading ? "Creating..." : "Create Membership"}
                       </Button>
@@ -2601,66 +2678,118 @@ cryorevive.in | +91 08595850920`;
                     <div className="space-y-3">
                       {memberships.map(m => {
                         const pct = m.sessions_total > 0 ? Math.round((m.sessions_used / m.sessions_total) * 100) : 0;
-                        const isExpiring = m.status === "active" && new Date(m.end_date) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                        const daysLeft = Math.ceil((new Date(m.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const isExpired = daysLeft <= 0;
+                        const isExpiringSoon = daysLeft > 0 && daysLeft <= 7;
                         return (
-                          <div key={m.id} className={`rounded-xl border p-4 ${m.status === "active" ? (isExpiring ? "border-yellow-500/40" : "border-border") : "border-destructive/20 opacity-70"}`}>
-                            <div className="flex justify-between items-start mb-3">
-                              <div>
-                                <p className="font-bold">{m.client_name}</p>
-                                <p className="text-muted-foreground text-sm">{m.client_mobile}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-primary/10 text-primary">{m.package_name}</span>
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.status === "active" ? "bg-green-500/15 text-green-500" : "bg-destructive/15 text-destructive"}`}>
-                                    {m.status}
-                                  </span>
+                          <div key={m.id} className={`rounded-xl border overflow-hidden ${m.status === "active" && !isExpiringSoon ? "border-border" : isExpiringSoon ? "border-yellow-500/40" : "border-destructive/20 opacity-70"}`}>
+                            <div className={`h-1 w-full ${m.package_type === "elite" ? "bg-purple-500" : m.package_type === "athlete" ? "bg-blue-500" : "bg-green-500"}`} />
+                            <div className="p-4">
+                              <div className="flex justify-between items-start mb-3">
+                                <div>
+                                  <p className="font-bold">{m.client_name}</p>
+                                  <p className="text-muted-foreground text-sm">{m.client_mobile}</p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                                      m.package_type === "elite" ? "bg-purple-500/20 text-purple-400" :
+                                      m.package_type === "athlete" ? "bg-blue-500/20 text-blue-400" :
+                                      "bg-green-500/20 text-green-400"
+                                    }`}>
+                                      {m.package_name}
+                                    </span>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                      m.status === "active" && !isExpired ? "bg-green-500/15 text-green-500" :
+                                      m.status === "paused" ? "bg-yellow-500/15 text-yellow-500" :
+                                      "bg-destructive/15 text-destructive"
+                                    }`}>
+                                      {isExpired && m.status === "active" ? "expired" : m.status}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-bold">{fmt(m.price_paid)}</p>
+                                  <p className="text-muted-foreground text-xs">paid</p>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <p className="text-2xl font-black">{m.sessions_remaining}</p>
-                                <p className="text-muted-foreground text-xs">sessions left</p>
-                              </div>
-                            </div>
 
-                            <div className="mb-3">
-                              <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                                <span>{m.sessions_used} used</span>
-                                <span>{m.sessions_total} total</span>
+                              {/* Session tracker */}
+                              <div className="bg-muted/50 rounded-xl p-3 mb-3">
+                                <p className="text-muted-foreground text-xs font-medium mb-2 uppercase tracking-wider">Session Tracker</p>
+                                <div className="grid grid-cols-3 gap-2 mb-3">
+                                  <div className="text-center">
+                                    <p className="text-2xl font-black">{m.sessions_total}</p>
+                                    <p className="text-muted-foreground text-xs">Given</p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-2xl font-black text-yellow-500">{m.sessions_used}</p>
+                                    <p className="text-muted-foreground text-xs">Taken</p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className={`text-2xl font-black ${m.sessions_remaining === 0 ? "text-destructive" : m.sessions_remaining <= 3 ? "text-yellow-500" : "text-green-500"}`}>
+                                      {m.sessions_remaining}
+                                    </p>
+                                    <p className="text-muted-foreground text-xs">Pending</p>
+                                  </div>
+                                </div>
+                                <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                  <span>{pct}% used</span>
+                                  <span>{m.sessions_remaining} left</span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-2.5">
+                                  <div
+                                    className={`h-2.5 rounded-full transition-all ${pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-yellow-500" : "bg-primary"}`}
+                                    style={{ width: `${Math.min(pct, 100)}%` }}
+                                  />
+                                </div>
                               </div>
-                              <div className="w-full bg-muted rounded-full h-2">
-                                <div
-                                  className={`h-2 rounded-full transition-all ${pct >= 80 ? "bg-destructive" : pct >= 60 ? "bg-yellow-500" : "bg-primary"}`}
-                                  style={{ width: `${pct}%` }}
-                                />
+
+                              {/* Validity */}
+                              <div className={`flex justify-between items-center text-xs mb-3 px-3 py-2 rounded-lg ${
+                                isExpiringSoon ? "bg-yellow-500/10" : isExpired ? "bg-destructive/10" : "bg-muted/40"
+                              }`}>
+                                <span className="text-muted-foreground">
+                                  {new Date(m.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} → {new Date(m.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                </span>
+                                <span className={isExpired ? "text-destructive font-bold" : isExpiringSoon ? "text-yellow-500 font-bold" : "text-muted-foreground"}>
+                                  {isExpired ? "Expired" : isExpiringSoon ? `${daysLeft}d left ⚠` : `${daysLeft} days`}
+                                </span>
                               </div>
-                            </div>
 
-                            <div className="flex justify-between text-xs text-muted-foreground mb-3">
-                              <span>{new Date(m.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
-                              <span>→</span>
-                              <span className={isExpiring ? "text-yellow-500 font-bold" : ""}>
-                                {new Date(m.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                                {isExpiring && " ⚠"}
-                              </span>
-                            </div>
-
-                            {m.status === "active" && (
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  className="flex-1"
-                                  disabled={m.sessions_remaining <= 0}
-                                  onClick={() => { setUseSessionMembershipId(m.id); setUseSessionServiceType(""); }}
-                                >
-                                  ✓ Use Session
+                              {m.status === "active" && !isExpired && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="flex-1"
+                                    disabled={m.sessions_remaining <= 0}
+                                    onClick={() => { setUseSessionMembershipId(m.id); setUseSessionServiceType(""); }}
+                                  >
+                                    ✓ Mark Session Used
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => toggleMembershipPause(m.id, m.status)}>Pause</Button>
+                                </div>
+                              )}
+                              {m.status === "paused" && (
+                                <Button size="sm" variant="outline" className="w-full" onClick={() => toggleMembershipPause(m.id, m.status)}>
+                                  ▶ Resume Membership
                                 </Button>
-                                <Button size="sm" variant="outline" onClick={() => toggleMembershipPause(m.id, m.status)}>Pause</Button>
-                              </div>
-                            )}
-                            {m.status === "paused" && (
-                              <Button size="sm" variant="outline" className="w-full" onClick={() => toggleMembershipPause(m.id, m.status)}>
-                                Resume Membership
-                              </Button>
-                            )}
+                              )}
+                              {m.status === "active" && m.sessions_remaining === 0 && (
+                                <div className="text-center pt-2">
+                                  <p className="text-destructive text-sm font-medium mb-1">All sessions used</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNewMembership(p => ({ ...p, client_id: m.client_id, client_name: m.client_name, client_mobile: m.client_mobile }));
+                                      setClientFound(true);
+                                      setShowAddMembership(true);
+                                    }}
+                                    className="text-primary text-xs hover:underline"
+                                  >
+                                    Renew Membership →
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
