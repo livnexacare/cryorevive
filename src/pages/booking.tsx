@@ -293,6 +293,7 @@ export default function Booking() {
           service_type: serviceType,
           date: selectedDate,
           time_slot: selectedTimeSlot,
+          amount: getServicePrice(livePrices, serviceType)?.price ?? 0,
           notes,
         }),
       }).catch(() => {})

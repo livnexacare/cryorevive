@@ -51,12 +51,12 @@ async def create_booking(payload: BookingIn):
         await db_execute(
             """INSERT INTO bookings
                (id, name, email, phone, service_type, date, time_slot, notes,
-                status, payment_status, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8,'pending','unpaid',$9)""",
+                amount, status, payment_status, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,'pending','unpaid',$10)""",
             booking_id,
             payload.name.strip(), str(payload.email), payload.phone.strip(),
             payload.service_type, payload.date, payload.time_slot,
-            payload.notes or "", datetime.now(timezone.utc)
+            payload.notes or "", payload.amount or 0, datetime.now(timezone.utc)
         )
     except Exception as e:
         print(f"ERROR create_booking: {e}")

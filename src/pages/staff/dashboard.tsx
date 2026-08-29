@@ -174,6 +174,11 @@ export default function StaffDashboard() {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedSlot, setSelectedSlot] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "online">("cash");
+  const [paymentDetails, setPaymentDetails] = useState({
+    original_amount: 0,
+    discount: 0,
+    final_amount: 0,
+  });
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [booking, setBooking] = useState<{ id: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -191,6 +196,12 @@ export default function StaffDashboard() {
   const [payrollLoading, setPayrollLoading] = useState(false);
 
   const selectedService = getServicePrice(livePrices, selectedServiceType);
+
+  // Pre-fill the amount to collect from the selected service's live price.
+  useEffect(() => {
+    const price = getServicePrice(livePrices, selectedServiceType)?.price ?? 0;
+    setPaymentDetails({ original_amount: price, discount: 0, final_amount: price });
+  }, [selectedServiceType, livePrices]);
 
   useEffect(() => {
     if (!sessionStorage.getItem("cryo_staff")) {
@@ -415,6 +426,7 @@ export default function StaffDashboard() {
           date: format(selectedDate, "yyyy-MM-dd"),
           time_slot: selectedSlot,
           payment_method: paymentMethod,
+          amount: paymentDetails.final_amount,
         }),
       });
       const savedBooking = await bookingRes.json();
@@ -949,6 +961,50 @@ export default function StaffDashboard() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Payment details — amount + discount */}
+              <div className="bg-card border border-border rounded-lg p-4">
+                <h3 className="text-foreground text-sm font-semibold mb-3">Payment Details</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Original Price (₹)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={paymentDetails.original_amount || ""}
+                      onChange={(e) => {
+                        const orig = parseInt(e.target.value) || 0;
+                        setPaymentDetails((p) => ({ ...p, original_amount: orig, final_amount: Math.max(0, orig - p.discount) }));
+                      }}
+                      placeholder="e.g. 899"
+                      className="w-full h-10 px-3 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Discount (₹)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={paymentDetails.discount || ""}
+                      onChange={(e) => {
+                        const disc = parseInt(e.target.value) || 0;
+                        setPaymentDetails((p) => ({ ...p, discount: disc, final_amount: Math.max(0, p.original_amount - disc) }));
+                      }}
+                      placeholder="0"
+                      className="w-full h-10 px-3 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center mt-3 pt-3 border-t border-border">
+                  <span className="text-muted-foreground text-sm">Amount to Collect</span>
+                  <span className="text-primary font-black text-xl">₹{paymentDetails.final_amount.toLocaleString("en-IN")}</span>
+                </div>
+                {paymentDetails.discount > 0 && (
+                  <p className="text-green-500 text-xs mt-1 text-right">
+                    Discount applied: ₹{paymentDetails.discount.toLocaleString("en-IN")}
+                  </p>
+                )}
               </div>
 
               <div className="bg-card border border-border rounded-lg p-4">
