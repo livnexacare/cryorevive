@@ -1617,7 +1617,7 @@ cryorevive.in | +91 08595850920`;
                           tickFormatter={(v: number) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
                         />
                         <Tooltip
-                          formatter={(value: number | string) => [`₹${Number(value).toLocaleString("en-IN")}`, ""]}
+                          formatter={(value: number | string, name: string) => [`₹${Number(value).toLocaleString("en-IN")}`, name]}
                           contentStyle={{ borderRadius: 8, fontSize: 12 }}
                         />
                         <Legend wrapperStyle={{ fontSize: 12 }} />
