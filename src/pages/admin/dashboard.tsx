@@ -8,6 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LogOut, Search, Calendar, TrendingUp, CheckCircle2, Clock, Bell, DollarSign, Trash2, Pencil, X, Copy, MessageCircle, RefreshCw, Upload, Eye, Tag, Users, KeyRound, Wallet } from "lucide-react";
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from "recharts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -23,7 +27,7 @@ const SERVICE_LABELS: Record<string, string> = {
 
 type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "no_show" | "postponed";
 type PaymentStatus = "unpaid" | "paid" | "refunded" | "partial";
-type DashTab = "bookings" | "announcements" | "pricing" | "coupons" | "staff" | "slots" | "payroll" | "members";
+type DashTab = "bookings" | "revenue" | "announcements" | "pricing" | "coupons" | "staff" | "slots" | "payroll" | "members";
 type AnnouncementType = "general" | "offer" | "feature" | "event";
 type EventType = "marathon" | "corporate" | "sports" | "school" | "military" | "custom";
 type StaffRole = "receptionist" | "therapist" | "manager";
@@ -39,6 +43,7 @@ interface Booking {
   date: string;
   time_slot: string;
   notes: string;
+  amount: number;
   status: BookingStatus;
   payment_status: PaymentStatus;
   created_at: string;
@@ -273,6 +278,18 @@ export default function AdminDashboard() {
   const [tick, setTick] = useState(0);
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
 
+  // Revenue analytics state
+  type RevenuePoint = { date: string; Bookings: number; Memberships: number; Total: number };
+  const [revenueData, setRevenueData] = useState<Record<"daily" | "weekly" | "monthly", RevenuePoint[]>>({
+    daily: [], weekly: [], monthly: [],
+  });
+  const [revenuePeriod, setRevenuePeriod] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [revenueStats, setRevenueStats] = useState({
+    today: 0, thisWeek: 0, thisMonth: 0, total: 0,
+    totalBookings: 0, paidBookings: 0, pendingAmount: 0,
+  });
+  const [loadingRevenue, setLoadingRevenue] = useState(false);
+
   // Payroll state
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
@@ -308,7 +325,8 @@ export default function AdminDashboard() {
   const [showAddMembership, setShowAddMembership] = useState(false);
   const emptyMembershipForm = {
     client_id: "", client_name: "", client_mobile: "",
-    package_type: "starter", sessions_total: 8, price_paid: 5999,
+    package_type: "starter", sessions_total: 8,
+    original_price: 5999, discount: 0, price_paid: 5999,
     start_date: new Date().toISOString().split("T")[0],
     end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
   };
@@ -453,6 +471,22 @@ export default function AdminDashboard() {
     return () => { cancelled = true; };
   }, [isAuthenticated, statusFilter, dateFilter, tick]);
 
+  // ── Fetch bookings for revenue (unfiltered, independent of the Bookings tab) ──
+
+  const [revenueBookings, setRevenueBookings] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "revenue") return;
+    let cancelled = false;
+    setLoadingRevenue(true);
+    fetch(`${API_URL}/api/bookings?limit=200`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => { if (!r.ok) throw new Error(`API error ${r.status}`); return r.json(); })
+      .then((data: Booking[]) => { if (!cancelled) setRevenueBookings(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setRevenueBookings([]); })
+      .finally(() => { if (!cancelled) setLoadingRevenue(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, tick]);
+
   // ── Fetch announcements ─────────────────────────────────────────────────
 
   useEffect(() => {
@@ -562,10 +596,11 @@ export default function AdminDashboard() {
   // ── Fetch memberships ────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!isAuthenticated || activeTab !== "members") return;
+    if (!isAuthenticated || (activeTab !== "members" && activeTab !== "revenue")) return;
     let cancelled = false;
     setMembershipsLoading(true);
-    const qs = memberFilter !== "all" ? `?status=${memberFilter}` : "";
+    // Revenue needs every membership regardless of the Members-tab status filter.
+    const qs = activeTab === "members" && memberFilter !== "all" ? `?status=${memberFilter}` : "";
     fetch(`${API_URL}/api/memberships${qs}`, { headers: { "X-Admin-Key": ADMIN_KEY } })
       .then(r => r.json())
       .then((data: Membership[]) => { if (!cancelled) setMemberships(Array.isArray(data) ? data : []); })
@@ -587,6 +622,117 @@ export default function AdminDashboard() {
       .finally(() => { if (!cancelled) setSlotsLoading(false); });
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab, slotsTick]);
+
+  // ── Revenue analytics ───────────────────────────────────────────────────
+  // Derives daily / weekly / monthly revenue from paid bookings + memberships.
+  // Bookings count toward the day they are scheduled for (`date`); memberships
+  // count toward the day they were created (`created_at`).
+
+  const computeRevenue = useCallback((bookingList: Booking[], membershipList: Membership[]) => {
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // Monday
+    weekStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const paidBookings = bookingList.filter(b => b.payment_status === "paid");
+    const bookingRevenue = paidBookings.reduce((s, b) => s + (b.amount || 0), 0);
+    const membershipRevenue = membershipList.reduce((s, m) => s + (m.price_paid || 0), 0);
+
+    const mDate = (m: Membership) => new Date(m.created_at);
+    const bDate = (b: Booking) => new Date(String(b.date).slice(0, 10) + "T00:00:00");
+
+    const sumBookings = (pred: (b: Booking) => boolean) =>
+      paidBookings.filter(pred).reduce((s, b) => s + (b.amount || 0), 0);
+    const sumMemberships = (pred: (m: Membership) => boolean) =>
+      membershipList.filter(pred).reduce((s, m) => s + (m.price_paid || 0), 0);
+
+    const todayRev =
+      sumBookings(b => String(b.date).slice(0, 10) === todayStr) +
+      sumMemberships(m => mDate(m).toISOString().split("T")[0] === todayStr);
+    const weekRev =
+      sumBookings(b => bDate(b) >= weekStart) +
+      sumMemberships(m => mDate(m) >= weekStart);
+    const monthRev =
+      sumBookings(b => bDate(b) >= monthStart) +
+      sumMemberships(m => mDate(m) >= monthStart);
+
+    setRevenueStats({
+      today: todayRev,
+      thisWeek: weekRev,
+      thisMonth: monthRev,
+      total: bookingRevenue + membershipRevenue,
+      totalBookings: bookingList.length,
+      paidBookings: paidBookings.length,
+      pendingAmount: bookingList
+        .filter(b => b.payment_status !== "paid")
+        .reduce((s, b) => s + (b.amount || 0), 0),
+    });
+
+    // Daily — last 14 days
+    const daily: RevenuePoint[] = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (13 - i));
+      const dateStr = d.toISOString().split("T")[0];
+      const dayBookingRev = sumBookings(b => String(b.date).slice(0, 10) === dateStr);
+      const dayMemberRev = sumMemberships(m => mDate(m).toISOString().split("T")[0] === dateStr);
+      return {
+        date: d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+        Bookings: dayBookingRev,
+        Memberships: dayMemberRev,
+        Total: dayBookingRev + dayMemberRev,
+      };
+    });
+
+    // Weekly — last 8 weeks
+    const weekly: RevenuePoint[] = Array.from({ length: 8 }, (_, i) => {
+      const weekEnd = new Date();
+      weekEnd.setHours(23, 59, 59, 999);
+      weekEnd.setDate(weekEnd.getDate() - i * 7);
+      const weekStartD = new Date(weekEnd);
+      weekStartD.setDate(weekEnd.getDate() - 6);
+      weekStartD.setHours(0, 0, 0, 0);
+      const wBookingRev = sumBookings(b => { const x = bDate(b); return x >= weekStartD && x <= weekEnd; });
+      const wMemberRev = sumMemberships(m => { const x = mDate(m); return x >= weekStartD && x <= weekEnd; });
+      return {
+        date: weekStartD.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+        Bookings: wBookingRev,
+        Memberships: wMemberRev,
+        Total: wBookingRev + wMemberRev,
+      };
+    }).reverse();
+
+    // Monthly — last 6 months
+    const monthly: RevenuePoint[] = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (5 - i));
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      const mBookingRev = sumBookings(b => {
+        const x = bDate(b);
+        return x.getFullYear() === year && x.getMonth() === month;
+      });
+      const mMemberRev = sumMemberships(m => {
+        const x = mDate(m);
+        return x.getFullYear() === year && x.getMonth() === month;
+      });
+      return {
+        date: d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
+        Bookings: mBookingRev,
+        Memberships: mMemberRev,
+        Total: mBookingRev + mMemberRev,
+      };
+    });
+
+    setRevenueData({ daily, weekly, monthly });
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== "revenue") return;
+    computeRevenue(revenueBookings, memberships);
+  }, [activeTab, revenueBookings, memberships, computeRevenue]);
 
   // ── Calculator ──────────────────────────────────────────────────────────
 
@@ -1190,9 +1336,9 @@ cryorevive.in | +91 08595850920`;
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto scrollbar-hide sticky top-[57px] sm:top-[73px] z-10 bg-background">
-            {(["bookings", "announcements", "pricing", "coupons", "staff", "slots", "payroll", "members"] as DashTab[]).map(tab => {
-              const icons = { bookings: Calendar, announcements: Bell, pricing: DollarSign, coupons: Tag, staff: Users, slots: Clock, payroll: Wallet, members: Users };
-              const labels = { bookings: "Bookings", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons", staff: "Staff", slots: "Slots", payroll: "Payroll", members: "Members" };
+            {(["bookings", "revenue", "announcements", "pricing", "coupons", "staff", "slots", "payroll", "members"] as DashTab[]).map(tab => {
+              const icons = { bookings: Calendar, revenue: TrendingUp, announcements: Bell, pricing: DollarSign, coupons: Tag, staff: Users, slots: Clock, payroll: Wallet, members: Users };
+              const labels = { bookings: "Bookings", revenue: "Revenue", announcements: "Announcements", pricing: "Pricing", coupons: "Coupons", staff: "Staff", slots: "Slots", payroll: "Payroll", members: "Members" };
               const Icon = icons[tab];
               return (
                 <button
@@ -1275,6 +1421,10 @@ cryorevive.in | +91 08595850920`;
                               <p className="text-muted-foreground">Time</p>
                               <p className="text-foreground">{b.time_slot}</p>
                             </div>
+                            <div>
+                              <p className="text-muted-foreground">Amount</p>
+                              <p className="text-foreground">{b.amount ? fmt(b.amount) : "—"}</p>
+                            </div>
                           </div>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" className="flex-1 h-9" onClick={() => setEditingBookingId(b.id)}>
@@ -1328,7 +1478,7 @@ cryorevive.in | +91 08595850920`;
                             <TableHead>ID</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead>
                             <TableHead>Phone</TableHead><TableHead>Service</TableHead><TableHead>Date</TableHead>
                             <TableHead>Time</TableHead><TableHead>Status</TableHead><TableHead>Payment</TableHead>
-                            <TableHead>Created</TableHead><TableHead>Actions</TableHead>
+                            <TableHead>Amount</TableHead><TableHead>Created</TableHead><TableHead>Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1344,6 +1494,11 @@ cryorevive.in | +91 08595850920`;
                                 <TableCell>{b.time_slot}</TableCell>
                                 <TableCell><StatusBadge status={b.status} /></TableCell>
                                 <TableCell><PaymentBadge status={b.payment_status} /></TableCell>
+                                <TableCell className="text-sm">
+                                  {b.amount
+                                    ? <span className="font-medium">{fmt(b.amount)}</span>
+                                    : <span className="text-muted-foreground">—</span>}
+                                </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">{new Date(b.created_at).toLocaleDateString()}</TableCell>
                                 <TableCell>
                                   <div className="flex gap-2">
@@ -1367,7 +1522,7 @@ cryorevive.in | +91 08595850920`;
                               </TableRow>
                               {editingBookingId === b.id && (
                                 <TableRow key={b.id + "-edit"}>
-                                  <TableCell colSpan={11} className="bg-muted/30">
+                                  <TableCell colSpan={12} className="bg-muted/30">
                                     <BookingEditForm
                                       booking={b}
                                       apiUrl={API_URL}
@@ -1387,6 +1542,155 @@ cryorevive.in | +91 08595850920`;
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {/* ══ Revenue Tab ══ */}
+          {activeTab === "revenue" && (
+            <div className="space-y-6">
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                {[
+                  { label: "Today's Revenue", value: revenueStats.today, color: "text-cyan-600" },
+                  { label: "This Week", value: revenueStats.thisWeek, color: "text-blue-600" },
+                  { label: "This Month", value: revenueStats.thisMonth, color: "text-green-600" },
+                  { label: "Total Revenue", value: revenueStats.total, color: "text-purple-600" },
+                ].map(card => (
+                  <Card key={card.label}>
+                    <CardContent className="p-4">
+                      <p className="text-muted-foreground text-xs mb-1">{card.label}</p>
+                      <p className={`text-lg sm:text-xl font-black ${card.color}`}>{fmt(card.value)}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Secondary stats */}
+              <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                <Card><CardContent className="p-3 text-center">
+                  <p className="text-xl font-black">{revenueStats.totalBookings}</p>
+                  <p className="text-muted-foreground text-xs">Total Bookings</p>
+                </CardContent></Card>
+                <Card><CardContent className="p-3 text-center">
+                  <p className="text-xl font-black text-green-600">{revenueStats.paidBookings}</p>
+                  <p className="text-muted-foreground text-xs">Paid Bookings</p>
+                </CardContent></Card>
+                <Card><CardContent className="p-3 text-center">
+                  <p className="text-xl font-black text-amber-600">{fmt(revenueStats.pendingAmount)}</p>
+                  <p className="text-muted-foreground text-xs">Pending</p>
+                </CardContent></Card>
+              </div>
+
+              {/* Period selector */}
+              <div className="flex gap-2">
+                {(["daily", "weekly", "monthly"] as const).map(p => (
+                  <Button
+                    key={p}
+                    size="sm"
+                    variant={revenuePeriod === p ? "default" : "outline"}
+                    onClick={() => setRevenuePeriod(p)}
+                  >
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </Button>
+                ))}
+              </div>
+
+              {/* Bar chart — Bookings vs Memberships */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    {revenuePeriod === "daily" ? "Last 14 Days" :
+                     revenuePeriod === "weekly" ? "Last 8 Weeks" : "Last 6 Months"} Revenue
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadingRevenue ? (
+                    <div className="py-12 text-center text-muted-foreground">Loading revenue...</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={revenueData[revenuePeriod]} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+                        <XAxis dataKey="date" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <YAxis
+                          tick={{ fontSize: 10 }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v: number) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                        />
+                        <Tooltip
+                          formatter={(value: number | string) => [`₹${Number(value).toLocaleString("en-IN")}`, ""]}
+                          contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="Bookings" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="Memberships" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Line chart — total trend */}
+              <Card>
+                <CardHeader><CardTitle className="text-base">Revenue Trend</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={revenueData[revenuePeriod]} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+                      <XAxis dataKey="date" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v: number) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                      />
+                      <Tooltip
+                        formatter={(value: number | string) => [`₹${Number(value).toLocaleString("en-IN")}`, "Total"]}
+                        contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                      />
+                      <Line type="monotone" dataKey="Total" stroke="#06b6d4" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Top services by paid-booking revenue */}
+              <Card>
+                <CardHeader><CardTitle className="text-base">Top Services</CardTitle></CardHeader>
+                <CardContent>
+                  {(() => {
+                    const serviceRevenue = revenueBookings
+                      .filter(b => b.payment_status === "paid")
+                      .reduce<Record<string, number>>((acc, b) => {
+                        const key = SERVICE_LABELS[b.service_type] ?? b.service_type
+                          .replace(/_/g, " ")
+                          .replace(/\b\w/g, c => c.toUpperCase());
+                        acc[key] = (acc[key] || 0) + (b.amount || 0);
+                        return acc;
+                      }, {});
+                    const sorted = Object.entries(serviceRevenue).sort(([, a], [, b]) => b - a).slice(0, 5);
+                    const maxRev = sorted[0]?.[1] || 1;
+                    return sorted.length > 0 ? sorted.map(([service, rev]) => (
+                      <div key={service} className="mb-3 last:mb-0">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-muted-foreground">{service}</span>
+                          <span className="font-bold">{fmt(rev)}</span>
+                        </div>
+                        <div className="w-full bg-muted rounded-full h-1.5">
+                          <div className="h-1.5 bg-cyan-500 rounded-full" style={{ width: `${(rev / maxRev) * 100}%` }} />
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="text-muted-foreground text-sm text-center py-4">No paid bookings yet</p>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+
+              <p className="text-muted-foreground text-xs">
+                Revenue is derived from paid bookings (by session date) and memberships (by purchase date),
+                over the 200 most recent bookings.
+              </p>
+            </div>
           )}
 
           {/* ══ Announcements Tab ══ */}
@@ -2570,7 +2874,7 @@ cryorevive.in | +91 08595850920`;
                           <button
                             type="button"
                             key={pkg.key}
-                            onClick={() => { setNewMembership(p => ({ ...p, package_type: pkg.key, sessions_total: pkg.sessions, price_paid: pkg.price })); setShowCustomPackage(false); }}
+                            onClick={() => { setNewMembership(p => ({ ...p, package_type: pkg.key, sessions_total: pkg.sessions, original_price: pkg.price, discount: 0, price_paid: pkg.price })); setShowCustomPackage(false); }}
                             className={`p-3 rounded-xl border text-center transition-all ${
                               newMembership.package_type === pkg.key && !showCustomPackage ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
                             }`}
@@ -2598,10 +2902,48 @@ cryorevive.in | +91 08595850920`;
                             </div>
                             <div>
                               <label className="text-xs text-muted-foreground mb-1 block">Price (₹)</label>
-                              <Input type="number" min={0} value={newMembership.price_paid} onChange={e => setNewMembership(p => ({ ...p, price_paid: parseInt(e.target.value) || 0, package_type: "custom" }))} />
+                              <Input
+                                type="number"
+                                min={0}
+                                value={newMembership.original_price}
+                                onChange={e => {
+                                  const orig = parseInt(e.target.value) || 0;
+                                  setNewMembership(p => ({ ...p, original_price: orig, price_paid: Math.max(0, orig - (p.discount || 0)), package_type: "custom" }));
+                                }}
+                              />
                             </div>
                           </div>
                         )}
+                      </div>
+
+                      {/* Discount */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">Package Price (₹)</label>
+                          <Input type="number" value={newMembership.original_price} readOnly className="bg-muted/50 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">Discount (₹)</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={newMembership.discount || ""}
+                            onChange={e => {
+                              const disc = parseInt(e.target.value) || 0;
+                              setNewMembership(p => ({ ...p, discount: disc, price_paid: Math.max(0, (p.original_price || 0) - disc) }));
+                            }}
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-between bg-muted/50 rounded-xl p-3">
+                        <span className="text-muted-foreground text-sm">Amount Paid</span>
+                        <span className="text-primary font-black">
+                          {fmt(newMembership.price_paid)}
+                          {(newMembership.discount || 0) > 0 && (
+                            <span className="text-green-600 text-xs ml-2">(−{fmt(newMembership.discount)})</span>
+                          )}
+                        </span>
                       </div>
 
                       {/* Client details — no lookup required, resolved on submit */}
@@ -2917,6 +3259,7 @@ function BookingEditForm({ booking, apiUrl, adminKey, onSaved, onCancel }: {
     date: String(booking.date).slice(0, 10),
     time_slot: booking.time_slot,
     notes: booking.notes ?? "",
+    amount: booking.amount ?? 0,
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -2973,6 +3316,17 @@ function BookingEditForm({ booking, apiUrl, adminKey, onSaved, onCancel }: {
         <div>
           <label className="text-xs font-medium mb-1 block">Time Slot</label>
           <Input value={form.time_slot} onChange={e => setForm(f => ({ ...f, time_slot: e.target.value }))} className="h-8 text-sm" />
+        </div>
+        <div>
+          <label className="text-xs font-medium mb-1 block">Amount (₹)</label>
+          <Input
+            type="number"
+            min={0}
+            value={form.amount || ""}
+            onChange={e => setForm(f => ({ ...f, amount: parseInt(e.target.value) || 0 }))}
+            placeholder="e.g. 899"
+            className="h-8 text-sm"
+          />
         </div>
       </div>
       <div>

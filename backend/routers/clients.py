@@ -61,6 +61,7 @@ class StaffBookingIn(BaseModel):
     date: Date
     time_slot: str
     payment_method: str  # cash | online
+    amount: Optional[int] = 0   # amount to collect in INR (final, after discount)
     notes: Optional[str] = None
 
 
@@ -200,13 +201,13 @@ async def staff_create_booking(
     row = await db_fetchrow(
         """INSERT INTO bookings (
              name, email, phone, service_type, date, time_slot,
-             status, payment_status, notes
-           ) VALUES ($1,$2,$3,$4,$5::date,$6,$7,$8,$9)
+             amount, status, payment_status, notes
+           ) VALUES ($1,$2,$3,$4,$5::date,$6,$7,$8,$9,$10)
            RETURNING *""",
         data.full_name.strip(),
         data.email or f"{data.mobile}@staff.booking",
         data.mobile.strip(), data.service_type, data.date, data.time_slot,
-        status, payment_status,
+        data.amount or 0, status, payment_status,
         f"Staff booking | Client: {data.client_id} | Payment: {data.payment_method} | {data.notes or ''}",
     )
     booking = row_to_dict(row)

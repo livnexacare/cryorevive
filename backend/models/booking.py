@@ -16,6 +16,7 @@ class BookingIn(BaseModel):
     date: Date       # YYYY-MM-DD, parsed to datetime.date by Pydantic
     time_slot: str   # HH:MM (e.g. "09:00")
     notes: Optional[str] = ""
+    amount: Optional[int] = 0   # booking value in INR (for revenue reporting)
 
 
 BookingStatus = Literal[
@@ -39,3 +40,4 @@ class BookingUpdate(BaseModel):
     date: Optional[Date] = None
     time_slot: Optional[str] = None
     notes: Optional[str] = None
+    amount: Optional[int] = None
