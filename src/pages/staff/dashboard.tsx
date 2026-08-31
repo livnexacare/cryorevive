@@ -7,7 +7,7 @@ import {
   Check, Phone, User, Heart, Loader2, Zap, CreditCard,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
-import { fetchLivePrices, getServicePrice, formatPrice, type ServicePrice } from "@/lib/pricing";
+import { fetchLivePrices, formatPrice, type ServicePrice } from "@/lib/pricing";
 
 const STAFF_KEY = process.env.NEXT_PUBLIC_STAFF_KEY || "";
 const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || "";
@@ -130,6 +130,15 @@ const MEMBERSHIP_PACKAGE_NAMES: Record<string, string> = {
   starter: "Starter", athlete: "Athlete", elite: "Elite", custom: "Custom",
 };
 
+// How many package sessions each service consumes (mirrors the backend).
+const SESSION_WEIGHTS: Record<string, number> = {
+  ice_bath: 1, steam_sauna: 1, compression_therapy: 1, deep_tissue_massage: 1,
+  cupping_therapy: 1, cryo_chamber: 1, mobile_unit: 1,
+  contrast_therapy: 2, physiotherapy: 2,
+  full_body_recovery: 4,
+};
+const sessionWeight = (serviceType: string) => SESSION_WEIGHTS[serviceType] ?? 1;
+
 const formatServiceLabel = (s: string) =>
   s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -169,7 +178,7 @@ export default function StaffDashboard() {
   const [pricesLoading, setPricesLoading] = useState(true);
 
   // Booking state
-  const [selectedServiceType, setSelectedServiceType] = useState("");
+  const [selectedServiceTypes, setSelectedServiceTypes] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedSlot, setSelectedSlot] = useState("");
@@ -195,13 +204,27 @@ export default function StaffDashboard() {
   const [myPayroll, setMyPayroll] = useState<PayrollRecord[]>([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
 
-  const selectedService = getServicePrice(livePrices, selectedServiceType);
+  const selectedServices = livePrices.filter(
+    (s) => s.is_active && selectedServiceTypes.includes(s.service_type)
+  );
+  const servicesTotal = selectedServices.reduce((sum, s) => sum + (s.price || 0), 0);
 
-  // Pre-fill the amount to collect from the selected service's live price.
+  const toggleStaffService = (serviceType: string) => {
+    setSelectedServiceTypes((prev) =>
+      prev.includes(serviceType)
+        ? prev.filter((t) => t !== serviceType)
+        : [...prev, serviceType]
+    );
+  };
+
+  // Pre-fill the amount to collect from the combined price of selected services.
   useEffect(() => {
-    const price = getServicePrice(livePrices, selectedServiceType)?.price ?? 0;
-    setPaymentDetails({ original_amount: price, discount: 0, final_amount: price });
-  }, [selectedServiceType, livePrices]);
+    setPaymentDetails((p) => ({
+      ...p,
+      original_amount: servicesTotal,
+      final_amount: Math.max(0, servicesTotal - p.discount),
+    }));
+  }, [servicesTotal]);
 
   useEffect(() => {
     if (!sessionStorage.getItem("cryo_staff")) {
@@ -268,14 +291,28 @@ export default function StaffDashboard() {
     checkClientMembership(c.mobile);
   };
 
-  const fetchSlots = useCallback(async (date: Date, serviceType: string) => {
+  // With multiple services booked into the same slot, a time is only offered
+  // when it is free for every selected service.
+  const fetchSlots = useCallback(async (date: Date, serviceTypes: string[]) => {
+    if (serviceTypes.length === 0) {
+      setAvailableSlots([]);
+      return;
+    }
     setLoadingSlots(true);
     try {
-      const res = await fetch(
-        `${API_URL}/api/slots?date=${format(date, "yyyy-MM-dd")}&service_type=${serviceType}`
+      const lists = await Promise.all(
+        serviceTypes.map((st) =>
+          fetch(`${API_URL}/api/slots?date=${format(date, "yyyy-MM-dd")}&service_type=${st}`)
+            .then((r) => (r.ok ? r.json() : { available_slots: [] }))
+            .then((d) => (d.available_slots ?? []) as string[])
+            .catch(() => [] as string[])
+        )
       );
-      const data = await res.json();
-      setAvailableSlots(res.ok ? data.available_slots ?? [] : []);
+      const intersection = lists.reduce(
+        (acc, list) => acc.filter((s) => list.includes(s)),
+        lists[0] ?? []
+      );
+      setAvailableSlots(intersection);
     } catch {
       setAvailableSlots([]);
     }
@@ -283,11 +320,13 @@ export default function StaffDashboard() {
   }, []);
 
   useEffect(() => {
-    if (selectedServiceType && selectedDate) {
-      fetchSlots(selectedDate, selectedServiceType);
+    if (selectedServiceTypes.length > 0 && selectedDate) {
+      fetchSlots(selectedDate, selectedServiceTypes);
       setSelectedSlot("");
+    } else {
+      setAvailableSlots([]);
     }
-  }, [selectedServiceType, selectedDate, fetchSlots]);
+  }, [selectedServiceTypes, selectedDate, fetchSlots]);
 
   const fetchStaffBookings = useCallback(async () => {
     setLoadingBookings(true);
@@ -337,12 +376,15 @@ export default function StaffDashboard() {
         headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
         body: JSON.stringify({ service_type: useSessionServiceType, staff_name: staffInfo?.full_name || "Staff" }),
       });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Error ${res.status}`);
+      }
       setUseSessionMembership(null);
       setUseSessionServiceType("");
       fetchStaffMemberships();
-    } catch {
-      alert("Failed to mark session used.");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to mark session used.");
     }
     setUseSessionSaving(false);
   };
@@ -370,7 +412,7 @@ export default function StaffDashboard() {
   };
 
   const handleSaveAndBook = async () => {
-    if (!selectedService || !selectedSlot || !consent) {
+    if (selectedServices.length === 0 || !selectedSlot || !consent) {
       setError("Please complete all required fields and accept consent");
       return;
     }
@@ -414,24 +456,49 @@ export default function StaffDashboard() {
         } catch { setMembershipError("Booking saved, but the membership package could not be created."); }
       }
 
-      const bookingRes = await fetch(`${API_URL}/api/staff/booking`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Staff-Key": STAFF_KEY },
-        body: JSON.stringify({
-          client_id: savedClient.id,
-          full_name: client.full_name,
-          mobile: client.mobile,
-          email: client.email || undefined,
-          service_type: selectedService.service_type,
-          date: format(selectedDate, "yyyy-MM-dd"),
-          time_slot: selectedSlot,
-          payment_method: paymentMethod,
-          amount: paymentDetails.final_amount,
-        }),
-      });
-      const savedBooking = await bookingRes.json();
-      if (!bookingRes.ok) throw new Error(savedBooking.detail || "Failed to create booking");
-      setBooking(savedBooking);
+      // One booking row per selected service, all into the same slot. The
+      // amount to collect is split across them (remainder on the first).
+      const n = selectedServices.length;
+      const per = Math.round(paymentDetails.final_amount / n);
+      const results = await Promise.allSettled(
+        selectedServices.map((svc, i) =>
+          fetch(`${API_URL}/api/staff/booking`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Staff-Key": STAFF_KEY },
+            body: JSON.stringify({
+              client_id: savedClient.id,
+              full_name: client.full_name,
+              mobile: client.mobile,
+              email: client.email || undefined,
+              service_type: svc.service_type,
+              date: format(selectedDate, "yyyy-MM-dd"),
+              time_slot: selectedSlot,
+              payment_method: paymentMethod,
+              amount: i === 0 ? paymentDetails.final_amount - per * (n - 1) : per,
+            }),
+          }).then(async (r) => {
+            const body = await r.json();
+            if (!r.ok) throw new Error(body.detail || "Failed to create booking");
+            return body as { id: string };
+          })
+        )
+      );
+
+      const ok = results.filter(
+        (r): r is PromiseFulfilledResult<{ id: string }> => r.status === "fulfilled"
+      );
+      if (ok.length === 0) {
+        const rejected = results.find((r) => r.status === "rejected") as
+          | PromiseRejectedResult
+          | undefined;
+        throw new Error(
+          rejected?.reason instanceof Error ? rejected.reason.message : "Failed to create booking"
+        );
+      }
+      if (ok.length < n) {
+        setError(`${n - ok.length} of ${n} services could not be booked into this slot.`);
+      }
+      setBooking(ok[0].value);
       setTab("confirm");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save booking");
@@ -467,7 +534,7 @@ export default function StaffDashboard() {
     setMembershipData(emptyMembershipData);
     setMembershipError("");
     setConsent(false);
-    setSelectedServiceType("");
+    setSelectedServiceTypes([]);
     setSelectedSlot("");
     setBooking(null);
     setError("");
@@ -860,30 +927,67 @@ export default function StaffDashboard() {
               <h2 className="text-lg font-bold">Book Session</h2>
 
               <div>
-                <h3 className="text-muted-foreground text-sm mb-3">Select Service</h3>
+                <h3 className="text-muted-foreground text-sm mb-3">Select Service(s)</h3>
                 {pricesLoading ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {livePrices.filter((s) => s.is_active).map((service) => (
-                      <button
-                        key={service.service_type}
-                        type="button"
-                        onClick={() => setSelectedServiceType(service.service_type)}
-                        className={`p-4 rounded-lg border text-left transition-all ${
-                          selectedServiceType === service.service_type
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-border/60"
-                        }`}
-                      >
-                        <p className="text-foreground font-bold text-sm">{service.name}</p>
-                        <p className="text-muted-foreground text-xs">{service.duration}</p>
-                        <p className="text-primary font-bold mt-1">{formatPrice(service.price)}</p>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      {livePrices.filter((s) => s.is_active).map((service) => {
+                        const isSelected = selectedServiceTypes.includes(service.service_type);
+                        return (
+                          <button
+                            key={service.service_type}
+                            type="button"
+                            onClick={() => toggleStaffService(service.service_type)}
+                            className={`relative p-4 rounded-lg border text-left transition-all ${
+                              isSelected
+                                ? "border-primary bg-primary/10"
+                                : "border-border hover:border-border/60"
+                            }`}
+                          >
+                            {isSelected && (
+                              <span className="absolute top-2 right-2 w-5 h-5 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold">
+                                ✓
+                              </span>
+                            )}
+                            <p className="text-foreground font-bold text-sm pr-6">{service.name}</p>
+                            <p className="text-muted-foreground text-xs">{service.duration}</p>
+                            <p className="text-primary font-bold mt-1">{formatPrice(service.price)}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {selectedServices.length > 0 && (
+                      <div className="bg-card border border-border rounded-lg p-3 mt-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <p className="text-muted-foreground text-xs">
+                            {selectedServices.length} service{selectedServices.length > 1 ? "s" : ""} selected
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedServiceTypes([])}
+                            className="text-muted-foreground hover:text-destructive text-xs"
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                        {selectedServices.map((s) => (
+                          <div key={s.service_type} className="flex justify-between text-xs mb-1">
+                            <span className="text-muted-foreground">{s.name}</span>
+                            <span className="text-foreground">{formatPrice(s.price)}</span>
+                          </div>
+                        ))}
+                        <div className="border-t border-border pt-2 mt-2 flex justify-between font-bold text-sm">
+                          <span className="text-muted-foreground">Total</span>
+                          <span className="text-primary">{formatPrice(servicesTotal)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -909,7 +1013,7 @@ export default function StaffDashboard() {
                 </div>
               </div>
 
-              {selectedServiceType && (
+              {selectedServiceTypes.length > 0 && (
                 <div>
                   <h3 className="text-muted-foreground text-sm mb-3">
                     Select Time Slot
@@ -1035,7 +1139,7 @@ export default function StaffDashboard() {
 
               <button
                 onClick={handleSaveAndBook}
-                disabled={saving || !selectedService || !selectedSlot || !consent}
+                disabled={saving || selectedServices.length === 0 || !selectedSlot || !consent}
                 className="w-full py-4 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 {saving ? (
@@ -1053,7 +1157,7 @@ export default function StaffDashboard() {
           )}
 
           {/* ── Confirmation ── */}
-          {tab === "confirm" && booking && selectedService && (
+          {tab === "confirm" && booking && selectedServices.length > 0 && (
             <div className="space-y-6">
               <div className="text-center py-6">
                 <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1065,18 +1169,27 @@ export default function StaffDashboard() {
                 </p>
               </div>
 
+              {error && (
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 text-destructive text-sm">
+                  {error}
+                </div>
+              )}
+
               <div className="bg-card rounded-lg p-5 space-y-3 border border-border">
                 {[
                   { label: "Client", value: client.full_name },
                   { label: "Mobile", value: client.mobile },
-                  { label: "Service", value: selectedService.name },
+                  {
+                    label: selectedServices.length > 1 ? "Services" : "Service",
+                    value: selectedServices.map((s) => s.name).join(", "),
+                  },
                   { label: "Date", value: format(selectedDate, "EEEE, dd MMMM yyyy") },
                   { label: "Time", value: formatSlotLabel(selectedSlot) },
                   {
                     label: "Payment",
                     value:
                       paymentMethod === "cash"
-                        ? `${formatPrice(selectedService.price)} Cash`
+                        ? `${formatPrice(paymentDetails.final_amount)} Cash`
                         : "Online — pending",
                   },
                 ].map((item) => (
@@ -1565,22 +1678,47 @@ export default function StaffDashboard() {
           <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setUseSessionMembership(null)}>
             <div className="w-full sm:max-w-sm bg-card rounded-t-2xl sm:rounded-2xl p-5 border border-border" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-foreground font-bold mb-1">Mark Session Used</h3>
-              <p className="text-muted-foreground text-sm mb-3">{useSessionMembership.client_name}</p>
+              <p className="text-muted-foreground text-sm mb-3">
+                {useSessionMembership.client_name} · <span className="font-medium text-foreground">{useSessionMembership.sessions_remaining}</span>{" "}
+                session{useSessionMembership.sessions_remaining === 1 ? "" : "s"} left
+              </p>
               <label className="block text-xs text-muted-foreground mb-1">Service Used</label>
               <select
                 value={useSessionServiceType}
                 onChange={(e) => setUseSessionServiceType(e.target.value)}
-                className="w-full h-11 px-3 bg-background border border-input rounded-lg text-foreground text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full h-11 px-3 bg-background border border-input rounded-lg text-foreground text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="">Select service...</option>
                 {livePrices.map((s) => (
-                  <option key={s.service_type} value={s.service_type}>{formatServiceLabel(s.service_type)}</option>
+                  <option key={s.service_type} value={s.service_type}>
+                    {formatServiceLabel(s.service_type)} — {sessionWeight(s.service_type)} session{sessionWeight(s.service_type) === 1 ? "" : "s"}
+                  </option>
                 ))}
               </select>
+              <div className="text-muted-foreground text-[11px] mb-3 leading-snug">
+                <p>1/session: Ice Bath, Sauna, Compression, Massage, Cupping</p>
+                <p>2: Contrast Therapy, Physio · 4: Full Body Recovery</p>
+              </div>
+              {useSessionServiceType && (() => {
+                const cost = sessionWeight(useSessionServiceType);
+                const remaining = useSessionMembership.sessions_remaining;
+                const notEnough = cost > remaining;
+                return (
+                  <p className={`text-sm mb-3 ${notEnough ? "text-destructive" : "text-muted-foreground"}`}>
+                    {notEnough
+                      ? `Not enough sessions — needs ${cost}, ${remaining} left.`
+                      : `Deducts ${cost} session${cost === 1 ? "" : "s"} · ${remaining - cost} left after.`}
+                  </p>
+                );
+              })()}
               <div className="flex gap-2">
                 <button
                   onClick={confirmStaffUseSession}
-                  disabled={!useSessionServiceType || useSessionSaving}
+                  disabled={
+                    !useSessionServiceType ||
+                    useSessionSaving ||
+                    sessionWeight(useSessionServiceType) > useSessionMembership.sessions_remaining
+                  }
                   className="flex-1 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-lg font-bold transition-colors"
                 >
                   {useSessionSaving ? "Saving..." : "Confirm"}
@@ -1622,7 +1760,7 @@ export default function StaffDashboard() {
       </div>
 
       {/* ── PRINT FORM ── */}
-      {booking && selectedService && (
+      {booking && selectedServices.length > 0 && (
         <div className="print-form" style={{ display: "none" }}>
           <div
             style={{
@@ -1711,11 +1849,14 @@ export default function StaffDashboard() {
                   Service Booked
                 </div>
                 <div style={{ padding: "8px", fontSize: "12px", lineHeight: "1.8" }}>
-                  <p><strong>{selectedService.name}</strong></p>
-                  <p>Duration: {selectedService.duration}</p>
+                  {selectedServices.map((s) => (
+                    <p key={s.service_type}>
+                      <strong>{s.name}</strong> — {s.duration} · {formatPrice(s.price)}
+                    </p>
+                  ))}
                   <p>Date: {format(selectedDate, "dd/MM/yyyy")}</p>
                   <p>Time: {formatSlotLabel(selectedSlot)}</p>
-                  <p>Price: {formatPrice(selectedService.price)}</p>
+                  <p>Total Price: {formatPrice(servicesTotal)}</p>
                   <p>Payment: {paymentMethod === "cash" ? "Cash — Collected" : "Online"}</p>
                 </div>
               </div>
@@ -1752,7 +1893,7 @@ export default function StaffDashboard() {
                   Staff Use Only
                 </div>
                 <div style={{ padding: "8px", fontSize: "12px", lineHeight: "1.8" }}>
-                  <p>Service Price: {formatPrice(selectedService.price)}</p>
+                  <p>Amount Collected: {formatPrice(paymentDetails.final_amount)}</p>
                   <p>Payment Method: {paymentMethod}</p>
                   <p>Booking ID: {booking.id?.slice(0, 8) || "—"}</p>
                   <p>Session Time: {formatSlotLabel(selectedSlot)}</p>

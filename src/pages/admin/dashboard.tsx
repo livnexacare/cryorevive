@@ -96,6 +96,19 @@ interface Membership {
   created_at: string;
 }
 
+interface Expense {
+  id: string;
+  category: string;
+  subcategory: string | null;
+  description: string;
+  amount: number;
+  expense_date: string;
+  recurring: boolean;
+  recurring_day: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
 interface Announcement {
   id: string;
   title: string;
@@ -208,6 +221,31 @@ const MEMBERSHIP_PACKAGES: { key: string; label: string; sessions: number; price
 ];
 
 const MEMBERSHIP_STATUS_FILTERS = ["all", "active", "expired", "paused", "cancelled"] as const;
+
+const EXPENSE_CATEGORIES: { key: string; label: string; icon: string; color: string }[] = [
+  { key: "rent", label: "Rent", icon: "🏢", color: "text-blue-500" },
+  { key: "electricity", label: "Electricity", icon: "⚡", color: "text-yellow-500" },
+  { key: "utilities", label: "Utilities", icon: "🔧", color: "text-orange-500" },
+  { key: "salary", label: "Salaries", icon: "👥", color: "text-purple-500" },
+  { key: "equipment", label: "Equipment", icon: "🏋️", color: "text-cyan-500" },
+  { key: "marketing", label: "Marketing", icon: "📣", color: "text-pink-500" },
+  { key: "maintenance", label: "Maintenance", icon: "🔨", color: "text-amber-500" },
+  { key: "supplies", label: "Supplies", icon: "🧴", color: "text-teal-500" },
+  { key: "other", label: "Other", icon: "📦", color: "text-muted-foreground" },
+];
+
+const EXPENSE_ICONS: Record<string, string> = Object.fromEntries(
+  EXPENSE_CATEGORIES.map(c => [c.key, c.icon]),
+);
+
+// How many package sessions each service consumes (mirrors the backend).
+const SESSION_WEIGHTS: Record<string, number> = {
+  ice_bath: 1, steam_sauna: 1, compression_therapy: 1, deep_tissue_massage: 1,
+  cupping_therapy: 1, cryo_chamber: 1, mobile_unit: 1,
+  contrast_therapy: 2, physiotherapy: 2,
+  full_body_recovery: 4,
+};
+const sessionWeight = (serviceType: string) => SESSION_WEIGHTS[serviceType] ?? 1;
 
 const ATTENDANCE_STATUS_OPTIONS: { value: AttendanceRecord["status"]; label: string }[] = [
   { value: "present", label: "Present" },
@@ -338,6 +376,22 @@ export default function AdminDashboard() {
   const [showCustomPackage, setShowCustomPackage] = useState(false);
   const [useSessionMembershipId, setUseSessionMembershipId] = useState<string | null>(null);
   const [useSessionServiceType, setUseSessionServiceType] = useState("");
+
+  // Expenses state (Revenue tab)
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expensesLoading, setExpensesLoading] = useState(false);
+  const [expensesTick, setExpensesTick] = useState(0);
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const emptyExpenseForm = {
+    category: "rent",
+    description: "",
+    amount: 0,
+    expense_date: new Date().toISOString().split("T")[0],
+    recurring: false,
+    notes: "",
+  };
+  const [newExpense, setNewExpense] = useState(emptyExpenseForm);
+  const [expenseFormError, setExpenseFormError] = useState("");
 
   // Announcements state
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -486,6 +540,20 @@ export default function AdminDashboard() {
       .finally(() => { if (!cancelled) setLoadingRevenue(false); });
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab, tick]);
+
+  // ── Fetch expenses (Revenue tab) ────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "revenue") return;
+    let cancelled = false;
+    setExpensesLoading(true);
+    fetch(`${API_URL}/api/expenses`, { headers: { "X-Admin-Key": ADMIN_KEY } })
+      .then(r => { if (!r.ok) throw new Error(`API error ${r.status}`); return r.json(); })
+      .then((data: Expense[]) => { if (!cancelled) setExpenses(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setExpenses([]); })
+      .finally(() => { if (!cancelled) setExpensesLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab, tick, expensesTick]);
 
   // ── Fetch announcements ─────────────────────────────────────────────────
 
@@ -734,6 +802,14 @@ export default function AdminDashboard() {
     computeRevenue(revenueBookings, memberships);
   }, [activeTab, revenueBookings, memberships, computeRevenue]);
 
+  // Expenses + profit/loss for the current calendar month
+  const currentMonthKey = new Date().toISOString().slice(0, 7);
+  const thisMonthExpenses = expenses.filter(
+    e => String(e.expense_date).slice(0, 7) === currentMonthKey,
+  );
+  const thisMonthExpenseTotal = thisMonthExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const netProfit = revenueStats.thisMonth - thisMonthExpenseTotal;
+
   // ── Calculator ──────────────────────────────────────────────────────────
 
   const runCalc = useCallback(() => {
@@ -910,13 +986,50 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_URL}/api/memberships/${useSessionMembershipId}/use-session`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
-        body: JSON.stringify({ service_type: useSessionServiceType }),
+        body: JSON.stringify({ service_type: useSessionServiceType, staff_name: "Admin" }),
       });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
       setUseSessionMembershipId(null);
       setUseSessionServiceType("");
       setMembershipsTick(t => t + 1);
-    } catch { alert("Failed to log session usage."); }
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed to log session usage."); }
+  };
+
+  const handleAddExpense = async () => {
+    setExpenseFormError("");
+    if (!newExpense.category || !newExpense.description.trim() || !newExpense.amount) {
+      setExpenseFormError("Category, description and amount are required");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify(newExpense),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      setShowAddExpense(false);
+      setNewExpense(emptyExpenseForm);
+      setExpensesTick(t => t + 1);
+    } catch (e) { setExpenseFormError(e instanceof Error ? e.message : "Failed to add expense"); }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!confirm("Delete this expense?")) return;
+    try {
+      const res = await fetch(`${API_URL}/api/expenses/${id}`, {
+        method: "DELETE",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setExpensesTick(t => t + 1);
+    } catch { alert("Failed to delete expense."); }
   };
 
   const toggleMembershipPause = async (id: string, currentStatus: MembershipStatus) => {
@@ -1686,9 +1799,91 @@ cryorevive.in | +91 08595850920`;
                 </CardContent>
               </Card>
 
+              {/* ── Expenses ── */}
+              <Card>
+                <CardHeader className="flex-row items-center justify-between space-y-0">
+                  <CardTitle className="text-base flex items-center gap-2">💸 Expenses</CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => { setExpenseFormError(""); setShowAddExpense(true); }}>
+                    + Add Expense
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Per-category totals for the current month */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {EXPENSE_CATEGORIES.map(cat => {
+                      const catTotal = thisMonthExpenses
+                        .filter(e => e.category === cat.key)
+                        .reduce((s, e) => s + (e.amount || 0), 0);
+                      return (
+                        <div key={cat.key} className="bg-muted/50 rounded-xl p-3 text-center">
+                          <p className="text-xl mb-1">{cat.icon}</p>
+                          <p className={`text-base font-black ${cat.color}`}>{fmt(catTotal)}</p>
+                          <p className="text-muted-foreground text-xs">{cat.label}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Profit / loss for the month */}
+                  <div className="bg-muted/50 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <p className="text-green-600 font-black text-lg">{fmt(revenueStats.thisMonth)}</p>
+                      <p className="text-muted-foreground text-xs">Revenue</p>
+                    </div>
+                    <div>
+                      <p className="text-destructive font-black text-lg">{fmt(thisMonthExpenseTotal)}</p>
+                      <p className="text-muted-foreground text-xs">Expenses</p>
+                    </div>
+                    <div>
+                      <p className={`font-black text-lg ${netProfit >= 0 ? "text-green-600" : "text-destructive"}`}>
+                        {netProfit < 0 ? "-" : "+"}{fmt(Math.abs(netProfit))}
+                      </p>
+                      <p className="text-muted-foreground text-xs">{netProfit >= 0 ? "✅ Profit" : "❌ Loss"}</p>
+                    </div>
+                  </div>
+
+                  {/* Recent expenses */}
+                  {expensesLoading ? (
+                    <p className="text-muted-foreground text-sm text-center py-6">Loading expenses...</p>
+                  ) : expenses.length === 0 ? (
+                    <p className="text-muted-foreground text-sm text-center py-6">No expenses recorded yet</p>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {expenses.slice(0, 20).map(expense => (
+                        <div key={expense.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-4 py-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-lg">{EXPENSE_ICONS[expense.category] ?? "📦"}</span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{expense.description}</p>
+                              <p className="text-muted-foreground text-xs">
+                                {expense.category}
+                                {" · "}
+                                {new Date(expense.expense_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                {expense.recurring && " 🔄"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <p className="text-destructive font-bold">-{fmt(expense.amount)}</p>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteExpense(expense.id)}
+                              className="text-muted-foreground hover:text-destructive transition-colors"
+                              aria-label="Delete expense"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
               <p className="text-muted-foreground text-xs">
                 Revenue is derived from paid bookings (by session date) and memberships (by purchase date),
-                over the 200 most recent bookings.
+                over the 200 most recent bookings. Expense category totals and profit/loss cover the current month.
               </p>
             </div>
           )}
@@ -3083,6 +3278,9 @@ cryorevive.in | +91 08595850920`;
                                     style={{ width: `${Math.min(pct, 100)}%` }}
                                   />
                                 </div>
+                                <p className="text-muted-foreground text-[11px] mt-2 leading-snug">
+                                  1/session: Ice Bath, Sauna, Compression, Massage · 2: Contrast, Physio · 4: Full Body Recovery
+                                </p>
                               </div>
 
                               {/* Validity */}
@@ -3143,22 +3341,150 @@ cryorevive.in | +91 08595850920`;
           )}
 
           {/* Use-session service picker modal */}
-          {useSessionMembershipId && (
+          {useSessionMembershipId && (() => {
+            const usm = memberships.find(m => m.id === useSessionMembershipId);
+            const remaining = usm?.sessions_remaining ?? 0;
+            const cost = useSessionServiceType ? sessionWeight(useSessionServiceType) : 0;
+            const notEnough = Boolean(useSessionServiceType) && cost > remaining;
+            const serviceKeys = Array.from(new Set([...Object.keys(SERVICE_LABELS), ...Object.keys(SESSION_WEIGHTS)]));
+            const label = (k: string) => SERVICE_LABELS[k] ?? k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+            return (
             <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setUseSessionMembershipId(null)}>
               <div className="w-full sm:max-w-sm bg-card rounded-t-2xl sm:rounded-2xl p-5 border border-border" onClick={e => e.stopPropagation()}>
-                <h3 className="font-bold mb-3">Log Session Usage</h3>
+                <h3 className="font-bold mb-1">Log Session Usage</h3>
+                {usm && (
+                  <p className="text-muted-foreground text-sm mb-3">
+                    {usm.client_name} · <span className="font-medium text-foreground">{remaining}</span> session{remaining === 1 ? "" : "s"} left
+                  </p>
+                )}
                 <label className="text-sm font-medium mb-1 block">Service Used</label>
                 <select
                   value={useSessionServiceType}
                   onChange={e => setUseSessionServiceType(e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mb-4"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mb-2"
                 >
                   <option value="">Select service...</option>
-                  {Object.entries(SERVICE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  {serviceKeys.map(key => (
+                    <option key={key} value={key}>
+                      {label(key)} — {sessionWeight(key)} session{sessionWeight(key) === 1 ? "" : "s"}
+                    </option>
+                  ))}
                 </select>
+                <div className="text-muted-foreground text-xs mb-3 leading-relaxed">
+                  <p>1 session: Ice Bath, Sauna, Compression, Massage, Cupping, Cryo Chamber</p>
+                  <p>2 sessions: Contrast Therapy, Physiotherapy</p>
+                  <p>4 sessions: Full Body Recovery</p>
+                </div>
+                {useSessionServiceType && (
+                  <p className={`text-sm mb-3 ${notEnough ? "text-destructive" : "text-muted-foreground"}`}>
+                    {notEnough
+                      ? `Not enough sessions — needs ${cost}, ${remaining} left.`
+                      : `Deducts ${cost} session${cost === 1 ? "" : "s"} · ${remaining - cost} left after.`}
+                  </p>
+                )}
                 <div className="flex gap-2">
-                  <Button className="flex-1" disabled={!useSessionServiceType} onClick={confirmUseSession}>Confirm</Button>
+                  <Button className="flex-1" disabled={!useSessionServiceType || notEnough} onClick={confirmUseSession}>Confirm</Button>
                   <Button variant="outline" className="flex-1" onClick={() => setUseSessionMembershipId(null)}>Cancel</Button>
+                </div>
+              </div>
+            </div>
+            );
+          })()}
+
+          {/* Add-expense modal */}
+          {showAddExpense && (
+            <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setShowAddExpense(false)}>
+              <div className="w-full sm:max-w-md bg-card rounded-t-2xl sm:rounded-2xl p-5 border border-border max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-lg">Add Expense</h3>
+                  <button type="button" onClick={() => setShowAddExpense(false)} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-2 block">Category</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {EXPENSE_CATEGORIES.map(cat => (
+                        <button
+                          key={cat.key}
+                          type="button"
+                          onClick={() => setNewExpense(p => ({ ...p, category: cat.key }))}
+                          className={`py-2 px-1 text-xs rounded-xl border transition-all text-center ${
+                            newExpense.category === cat.key
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          {cat.icon} {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Description *</label>
+                    <Input
+                      value={newExpense.description}
+                      onChange={e => setNewExpense(p => ({ ...p, description: e.target.value }))}
+                      placeholder="e.g. Monthly rent — August 2026"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Amount (₹) *</label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={newExpense.amount || ""}
+                        onChange={e => setNewExpense(p => ({ ...p, amount: parseInt(e.target.value) || 0 }))}
+                        placeholder="e.g. 25000"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Date</label>
+                      <Input
+                        type="date"
+                        value={newExpense.expense_date}
+                        onChange={e => setNewExpense(p => ({ ...p, expense_date: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-muted/50 rounded-xl p-3">
+                    <div>
+                      <p className="text-sm">Recurring monthly</p>
+                      <p className="text-muted-foreground text-xs">Flag repeating expenses like rent</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNewExpense(p => ({ ...p, recurring: !p.recurring }))}
+                      className={`w-11 h-6 rounded-full transition-colors ${newExpense.recurring ? "bg-primary" : "bg-muted"}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full mx-1 transition-transform ${newExpense.recurring ? "translate-x-5" : ""}`} />
+                    </button>
+                  </div>
+
+                  <Input
+                    value={newExpense.notes}
+                    onChange={e => setNewExpense(p => ({ ...p, notes: e.target.value }))}
+                    placeholder="Notes (optional)"
+                  />
+
+                  {expenseFormError && <p className="text-destructive text-xs">{expenseFormError}</p>}
+
+                  <div className="flex gap-3">
+                    <Button variant="outline" className="flex-1" onClick={() => setShowAddExpense(false)}>Cancel</Button>
+                    <Button
+                      className="flex-1"
+                      disabled={!newExpense.category || !newExpense.description.trim() || !newExpense.amount}
+                      onClick={handleAddExpense}
+                    >
+                      Add Expense
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

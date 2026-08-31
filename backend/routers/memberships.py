@@ -16,6 +16,20 @@ PACKAGES = {
     "elite": {"name": "Elite", "sessions": 30, "price": 15999},
 }
 
+# How many package sessions each service consumes.
+SESSION_WEIGHTS = {
+    "ice_bath": 1,
+    "steam_sauna": 1,
+    "compression_therapy": 1,
+    "deep_tissue_massage": 1,   # massage gun equivalent
+    "cupping_therapy": 1,
+    "cryo_chamber": 1,
+    "mobile_unit": 1,
+    "contrast_therapy": 2,
+    "physiotherapy": 2,
+    "full_body_recovery": 4,
+}
+
 
 def _require_admin(x_admin_key: str) -> None:
     if not ADMIN_KEY or x_admin_key != ADMIN_KEY:
@@ -110,18 +124,32 @@ async def use_session(
 
     if m["status"] != "active":
         raise HTTPException(status_code=400, detail=f"Membership is {m['status']}")
-    if m["sessions_remaining"] <= 0:
-        raise HTTPException(status_code=400, detail="No sessions remaining")
+
+    sessions_consumed = SESSION_WEIGHTS.get(data.service_type, 1)
+    service_label = data.service_type.replace("_", " ").title()
+
+    if m["sessions_remaining"] < sessions_consumed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Not enough sessions remaining. {service_label} requires "
+                f"{sessions_consumed} session(s), but only {m['sessions_remaining']} left."
+            ),
+        )
+
+    session_note = f"Sessions consumed: {sessions_consumed}."
+    if data.notes:
+        session_note = f"{session_note} {data.notes}"
 
     await db_execute(
         """INSERT INTO membership_sessions
            (membership_id, booking_id, service_type, staff_name, notes)
            VALUES ($1, $2, $3, $4, $5)""",
-        membership_id, data.booking_id, data.service_type, data.staff_name, data.notes,
+        membership_id, data.booking_id, data.service_type, data.staff_name, session_note,
     )
 
-    new_used = m["sessions_used"] + 1
-    new_remaining = m["sessions_remaining"] - 1
+    new_used = m["sessions_used"] + sessions_consumed
+    new_remaining = m["sessions_remaining"] - sessions_consumed
     new_status = "active" if new_remaining > 0 else "expired"
 
     row = await db_fetchrow(
@@ -133,7 +161,11 @@ async def use_session(
            WHERE id = $4 RETURNING *""",
         new_used, new_remaining, new_status, membership_id,
     )
-    return row_to_dict(row)
+    return {
+        **row_to_dict(row),
+        "sessions_consumed": sessions_consumed,
+        "message": f"{sessions_consumed} session(s) deducted for {service_label}",
+    }
 
 
 @router.patch("/memberships/{membership_id}")
