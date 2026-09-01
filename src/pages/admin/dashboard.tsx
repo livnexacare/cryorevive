@@ -381,6 +381,7 @@ export default function AdminDashboard() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [expensesTick, setExpensesTick] = useState(0);
+  const [expenseMonth, setExpenseMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [showAddExpense, setShowAddExpense] = useState(false);
   const emptyExpenseForm = {
     category: "rent",
@@ -802,13 +803,58 @@ export default function AdminDashboard() {
     computeRevenue(revenueBookings, memberships);
   }, [activeTab, revenueBookings, memberships, computeRevenue]);
 
-  // Expenses + profit/loss for the current calendar month
-  const currentMonthKey = new Date().toISOString().slice(0, 7);
-  const thisMonthExpenses = expenses.filter(
-    e => String(e.expense_date).slice(0, 7) === currentMonthKey,
-  );
-  const thisMonthExpenseTotal = thisMonthExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const netProfit = revenueStats.thisMonth - thisMonthExpenseTotal;
+  // ── Expenses: month selector + per-month profit/loss ────────────────────
+  // `expenses` holds every expense (unfiltered fetch); the view is sliced
+  // client-side by `expenseMonth` (YYYY-MM), which also powers the 6-month chart.
+  const nowMonthKey = new Date().toISOString().slice(0, 7);
+
+  const monthKeyOf = (dateish: string) => String(dateish).slice(0, 7);
+  const monthLabel = (key: string) =>
+    new Date(key + "-01T00:00:00").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const shiftMonth = (key: string, delta: number) => {
+    const d = new Date(key + "-01T00:00:00");
+    d.setMonth(d.getMonth() + delta);
+    return d.toISOString().slice(0, 7);
+  };
+
+  const monthExpenses = expenses.filter(e => monthKeyOf(e.expense_date) === expenseMonth);
+  const monthExpenseTotal = monthExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+
+  // Revenue for an arbitrary YYYY-MM: paid bookings by session date +
+  // memberships by purchase date (mirrors computeRevenue).
+  const revenueForMonth = useCallback((key: string) => {
+    const [y, m] = key.split("-").map(Number);
+    const inMonth = (dateish: string) => {
+      const d = new Date(String(dateish).slice(0, 10) + "T00:00:00");
+      return d.getFullYear() === y && d.getMonth() + 1 === m;
+    };
+    const bookingRev = revenueBookings
+      .filter(b => b.payment_status === "paid" && inMonth(b.date))
+      .reduce((s, b) => s + (b.amount || 0), 0);
+    const memberRev = memberships
+      .filter(mem => {
+        const d = new Date(mem.created_at);
+        return d.getFullYear() === y && d.getMonth() + 1 === m;
+      })
+      .reduce((s, mem) => s + (mem.price_paid || 0), 0);
+    return bookingRev + memberRev;
+  }, [revenueBookings, memberships]);
+
+  const selectedMonthRevenue = revenueForMonth(expenseMonth);
+  const monthProfit = selectedMonthRevenue - monthExpenseTotal;
+
+  // Last 6 months (oldest → current) for the comparison chart.
+  const last6MonthsData = Array.from({ length: 6 }, (_, i) => {
+    const key = shiftMonth(nowMonthKey, -(5 - i));
+    const exp = expenses
+      .filter(e => monthKeyOf(e.expense_date) === key)
+      .reduce((s, e) => s + (e.amount || 0), 0);
+    return {
+      month: new Date(key + "-01T00:00:00").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
+      Revenue: revenueForMonth(key),
+      Expenses: exp,
+    };
+  });
 
   // ── Calculator ──────────────────────────────────────────────────────────
 
@@ -1808,10 +1854,49 @@ cryorevive.in | +91 08595850920`;
                   </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Per-category totals for the current month */}
+                  {/* Month selector */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label="Previous month"
+                      onClick={() => setExpenseMonth(m => shiftMonth(m, -1))}
+                    >
+                      ←
+                    </Button>
+                    <Input
+                      type="month"
+                      max={nowMonthKey}
+                      value={expenseMonth}
+                      onChange={e => e.target.value && setExpenseMonth(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label="Next month"
+                      disabled={expenseMonth >= nowMonthKey}
+                      onClick={() => setExpenseMonth(m => (m < nowMonthKey ? shiftMonth(m, 1) : m))}
+                    >
+                      →
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={expenseMonth === nowMonthKey ? "default" : "secondary"}
+                      className="whitespace-nowrap"
+                      onClick={() => setExpenseMonth(nowMonthKey)}
+                    >
+                      This Month
+                    </Button>
+                  </div>
+                  <p className="text-muted-foreground text-sm">
+                    Showing <span className="text-foreground font-bold">{monthLabel(expenseMonth)}</span>
+                  </p>
+
+                  {/* Per-category totals for the selected month */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {EXPENSE_CATEGORIES.map(cat => {
-                      const catTotal = thisMonthExpenses
+                      const catTotal = monthExpenses
                         .filter(e => e.category === cat.key)
                         .reduce((s, e) => s + (e.amount || 0), 0);
                       return (
@@ -1824,32 +1909,61 @@ cryorevive.in | +91 08595850920`;
                     })}
                   </div>
 
-                  {/* Profit / loss for the month */}
-                  <div className="bg-muted/50 rounded-xl p-4 grid grid-cols-3 gap-4 text-center">
-                    <div>
-                      <p className="text-green-600 font-black text-lg">{fmt(revenueStats.thisMonth)}</p>
-                      <p className="text-muted-foreground text-xs">Revenue</p>
-                    </div>
-                    <div>
-                      <p className="text-destructive font-black text-lg">{fmt(thisMonthExpenseTotal)}</p>
-                      <p className="text-muted-foreground text-xs">Expenses</p>
-                    </div>
-                    <div>
-                      <p className={`font-black text-lg ${netProfit >= 0 ? "text-green-600" : "text-destructive"}`}>
-                        {netProfit < 0 ? "-" : "+"}{fmt(Math.abs(netProfit))}
-                      </p>
-                      <p className="text-muted-foreground text-xs">{netProfit >= 0 ? "✅ Profit" : "❌ Loss"}</p>
+                  {/* Revenue / expenses / profit for the selected month */}
+                  <div className="bg-muted/50 rounded-xl p-4">
+                    <p className="text-muted-foreground text-xs text-center mb-3">{monthLabel(expenseMonth)} Summary</p>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-green-600 font-black text-lg">{fmt(selectedMonthRevenue)}</p>
+                        <p className="text-muted-foreground text-xs">Revenue</p>
+                      </div>
+                      <div>
+                        <p className="text-destructive font-black text-lg">{fmt(monthExpenseTotal)}</p>
+                        <p className="text-muted-foreground text-xs">Expenses</p>
+                      </div>
+                      <div>
+                        <p className={`font-black text-lg ${monthProfit >= 0 ? "text-green-600" : "text-destructive"}`}>
+                          {monthProfit < 0 ? "-" : "+"}{fmt(Math.abs(monthProfit))}
+                        </p>
+                        <p className="text-muted-foreground text-xs">{monthProfit >= 0 ? "✅ Profit" : "❌ Loss"}</p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Recent expenses */}
+                  {/* 6-month revenue vs expenses */}
+                  <div>
+                    <p className="text-sm font-medium mb-2">6-Month Revenue vs Expenses</p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={last6MonthsData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+                        <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <YAxis
+                          tick={{ fontSize: 10 }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(v: number) => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                        />
+                        <Tooltip
+                          formatter={(value: number | string, name: string) => [`₹${Number(value).toLocaleString("en-IN")}`, name]}
+                          contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Bar dataKey="Revenue" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Expenses for the selected month */}
                   {expensesLoading ? (
                     <p className="text-muted-foreground text-sm text-center py-6">Loading expenses...</p>
-                  ) : expenses.length === 0 ? (
-                    <p className="text-muted-foreground text-sm text-center py-6">No expenses recorded yet</p>
+                  ) : monthExpenses.length === 0 ? (
+                    <p className="text-muted-foreground text-sm text-center py-6">
+                      No expenses recorded for {monthLabel(expenseMonth)}
+                    </p>
                   ) : (
                     <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {expenses.slice(0, 20).map(expense => (
+                      {monthExpenses.map(expense => (
                         <div key={expense.id} className="flex items-center justify-between bg-muted/40 rounded-xl px-4 py-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <span className="text-lg">{EXPENSE_ICONS[expense.category] ?? "📦"}</span>
@@ -1883,7 +1997,8 @@ cryorevive.in | +91 08595850920`;
 
               <p className="text-muted-foreground text-xs">
                 Revenue is derived from paid bookings (by session date) and memberships (by purchase date),
-                over the 200 most recent bookings. Expense category totals and profit/loss cover the current month.
+                over the 200 most recent bookings. Expense totals, profit/loss and the list above cover the
+                selected month; the 6-month chart always ends at the current month.
               </p>
             </div>
           )}
