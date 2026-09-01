@@ -377,6 +377,18 @@ export default function AdminDashboard() {
   const [useSessionMembershipId, setUseSessionMembershipId] = useState<string | null>(null);
   const [useSessionServiceType, setUseSessionServiceType] = useState("");
 
+  // Member detail modal (opened from the placecards grid)
+  const [selectedMember, setSelectedMember] = useState<Membership | null>(null);
+  const emptyMemberEdit = {
+    sessions_total: 0,
+    sessions_remaining: 0,
+    end_date: "",
+    status: "active" as MembershipStatus,
+  };
+  const [memberEdit, setMemberEdit] = useState(emptyMemberEdit);
+  const [memberEditSaving, setMemberEditSaving] = useState(false);
+  const [memberEditError, setMemberEditError] = useState("");
+
   // Expenses state (Revenue tab)
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(false);
@@ -677,6 +689,30 @@ export default function AdminDashboard() {
       .finally(() => { if (!cancelled) setMembershipsLoading(false); });
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab, membershipsTick, memberFilter]);
+
+  // Seed the edit form when the detail modal opens on a different member
+  // (keyed on id so a background refetch doesn't clobber in-progress edits).
+  const selectedMemberId = selectedMember?.id;
+  useEffect(() => {
+    if (!selectedMember) return;
+    setMemberEdit({
+      sessions_total: selectedMember.sessions_total,
+      sessions_remaining: selectedMember.sessions_remaining,
+      end_date: String(selectedMember.end_date).slice(0, 10),
+      status: selectedMember.status,
+    });
+    setMemberEditError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMemberId]);
+
+  // After a memberships refetch, point the open modal at the fresh record.
+  useEffect(() => {
+    setSelectedMember(prev => {
+      if (!prev) return prev;
+      const fresh = memberships.find(m => m.id === prev.id);
+      return fresh ?? prev;
+    });
+  }, [memberships]);
 
   // ── Fetch custom slots ───────────────────────────────────────────────────
 
@@ -1038,10 +1074,43 @@ export default function AdminDashboard() {
         const err = await res.json().catch(() => ({})) as { detail?: string };
         throw new Error(err.detail ?? `Error ${res.status}`);
       }
+      const updated = await res.json().catch(() => null) as (Membership & { message?: string }) | null;
       setUseSessionMembershipId(null);
       setUseSessionServiceType("");
       setMembershipsTick(t => t + 1);
+      if (updated?.id) {
+        setSelectedMember(prev => (prev && prev.id === updated.id ? updated : prev));
+      }
     } catch (e) { alert(e instanceof Error ? e.message : "Failed to log session usage."); }
+  };
+
+  const handleUpdateMember = async () => {
+    if (!selectedMember) return;
+    setMemberEditSaving(true);
+    setMemberEditError("");
+    try {
+      const res = await fetch(`${API_URL}/api/memberships/${selectedMember.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({
+          sessions_total: memberEdit.sessions_total,
+          sessions_remaining: memberEdit.sessions_remaining,
+          end_date: memberEdit.end_date,
+          status: memberEdit.status,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? `Error ${res.status}`);
+      }
+      const updated = await res.json() as Membership;
+      setSelectedMember(updated);
+      setMembershipsTick(t => t + 1);
+    } catch (e) {
+      setMemberEditError(e instanceof Error ? e.message : "Failed to update membership");
+    } finally {
+      setMemberEditSaving(false);
+    }
   };
 
   const handleAddExpense = async () => {
@@ -3327,125 +3396,88 @@ cryorevive.in | +91 08595850920`;
                   ) : memberships.length === 0 ? (
                     <div className="py-8 text-center text-muted-foreground">No memberships yet. Add one above.</div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {memberships.map(m => {
-                        const pct = m.sessions_total > 0 ? Math.round((m.sessions_used / m.sessions_total) * 100) : 0;
+                        const taken = Math.max(0, m.sessions_total - m.sessions_remaining);
+                        const pct = m.sessions_total > 0 ? Math.round((taken / m.sessions_total) * 100) : 0;
                         const daysLeft = Math.ceil((new Date(m.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         const isExpired = daysLeft <= 0;
                         const isExpiringSoon = daysLeft > 0 && daysLeft <= 7;
                         return (
-                          <div key={m.id} className={`rounded-xl border overflow-hidden ${m.status === "active" && !isExpiringSoon ? "border-border" : isExpiringSoon ? "border-yellow-500/40" : "border-destructive/20 opacity-70"}`}>
-                            <div className={`h-1 w-full ${m.package_type === "elite" ? "bg-purple-500" : m.package_type === "athlete" ? "bg-blue-500" : "bg-green-500"}`} />
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setSelectedMember(m)}
+                            className={`text-left rounded-2xl border overflow-hidden transition-all hover:shadow-md hover:border-primary/40 ${
+                              m.status === "active" && !isExpiringSoon && !isExpired ? "border-border" :
+                              isExpiringSoon ? "border-yellow-500/40" :
+                              "border-destructive/20 opacity-80"
+                            }`}
+                          >
+                            <div className={`h-1.5 w-full ${
+                              m.package_type === "elite" ? "bg-gradient-to-r from-purple-500 to-pink-500" :
+                              m.package_type === "athlete" ? "bg-gradient-to-r from-blue-500 to-cyan-500" :
+                              m.package_type === "custom" ? "bg-gradient-to-r from-amber-500 to-orange-500" :
+                              "bg-gradient-to-r from-green-500 to-emerald-500"
+                            }`} />
                             <div className="p-4">
-                              <div className="flex justify-between items-start mb-3">
-                                <div>
-                                  <p className="font-bold">{m.client_name}</p>
-                                  <p className="text-muted-foreground text-sm">{m.client_mobile}</p>
-                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                                      m.package_type === "elite" ? "bg-purple-500/20 text-purple-400" :
-                                      m.package_type === "athlete" ? "bg-blue-500/20 text-blue-400" :
-                                      "bg-green-500/20 text-green-400"
-                                    }`}>
-                                      {m.package_name}
-                                    </span>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                      m.status === "active" && !isExpired ? "bg-green-500/15 text-green-500" :
-                                      m.status === "paused" ? "bg-yellow-500/15 text-yellow-500" :
-                                      "bg-destructive/15 text-destructive"
-                                    }`}>
-                                      {isExpired && m.status === "active" ? "expired" : m.status}
-                                    </span>
-                                  </div>
+                              <div className="flex items-start justify-between gap-2 mb-3">
+                                <div className="min-w-0">
+                                  <p className="font-bold truncate">{m.client_name}</p>
+                                  <p className="text-muted-foreground text-xs">{m.client_mobile}</p>
                                 </div>
-                                <div className="text-right">
-                                  <p className="font-bold">{fmt(m.price_paid)}</p>
-                                  <p className="text-muted-foreground text-xs">paid</p>
-                                </div>
-                              </div>
-
-                              {/* Session tracker */}
-                              <div className="bg-muted/50 rounded-xl p-3 mb-3">
-                                <p className="text-muted-foreground text-xs font-medium mb-2 uppercase tracking-wider">Session Tracker</p>
-                                <div className="grid grid-cols-3 gap-2 mb-3">
-                                  <div className="text-center">
-                                    <p className="text-2xl font-black">{m.sessions_total}</p>
-                                    <p className="text-muted-foreground text-xs">Given</p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-2xl font-black text-yellow-500">{m.sessions_used}</p>
-                                    <p className="text-muted-foreground text-xs">Taken</p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className={`text-2xl font-black ${m.sessions_remaining === 0 ? "text-destructive" : m.sessions_remaining <= 3 ? "text-yellow-500" : "text-green-500"}`}>
-                                      {m.sessions_remaining}
-                                    </p>
-                                    <p className="text-muted-foreground text-xs">Pending</p>
-                                  </div>
-                                </div>
-                                <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                                  <span>{pct}% used</span>
-                                  <span>{m.sessions_remaining} left</span>
-                                </div>
-                                <div className="w-full bg-muted rounded-full h-2.5">
-                                  <div
-                                    className={`h-2.5 rounded-full transition-all ${pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-yellow-500" : "bg-primary"}`}
-                                    style={{ width: `${Math.min(pct, 100)}%` }}
-                                  />
-                                </div>
-                                <p className="text-muted-foreground text-[11px] mt-2 leading-snug">
-                                  1/session: Ice Bath, Sauna, Compression, Massage · 2: Contrast, Physio · 4: Full Body Recovery
-                                </p>
-                              </div>
-
-                              {/* Validity */}
-                              <div className={`flex justify-between items-center text-xs mb-3 px-3 py-2 rounded-lg ${
-                                isExpiringSoon ? "bg-yellow-500/10" : isExpired ? "bg-destructive/10" : "bg-muted/40"
-                              }`}>
-                                <span className="text-muted-foreground">
-                                  {new Date(m.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} → {new Date(m.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                                </span>
-                                <span className={isExpired ? "text-destructive font-bold" : isExpiringSoon ? "text-yellow-500 font-bold" : "text-muted-foreground"}>
-                                  {isExpired ? "Expired" : isExpiringSoon ? `${daysLeft}d left ⚠` : `${daysLeft} days`}
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                                  m.package_type === "elite" ? "bg-purple-500/20 text-purple-400" :
+                                  m.package_type === "athlete" ? "bg-blue-500/20 text-blue-400" :
+                                  m.package_type === "custom" ? "bg-amber-500/20 text-amber-400" :
+                                  "bg-green-500/20 text-green-400"
+                                }`}>
+                                  {m.package_name}
                                 </span>
                               </div>
 
-                              {m.status === "active" && !isExpired && (
-                                <div className="flex gap-2">
-                                  <Button
-                                    size="sm"
-                                    className="flex-1"
-                                    disabled={m.sessions_remaining <= 0}
-                                    onClick={() => { setUseSessionMembershipId(m.id); setUseSessionServiceType(""); }}
-                                  >
-                                    ✓ Mark Session Used
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={() => toggleMembershipPause(m.id, m.status)}>Pause</Button>
+                              <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                                <div className="bg-muted/60 rounded-xl py-2">
+                                  <p className="font-black text-xl leading-none">{m.sessions_total}</p>
+                                  <p className="text-muted-foreground text-[10px] mt-0.5">Given</p>
                                 </div>
-                              )}
-                              {m.status === "paused" && (
-                                <Button size="sm" variant="outline" className="w-full" onClick={() => toggleMembershipPause(m.id, m.status)}>
-                                  ▶ Resume Membership
-                                </Button>
-                              )}
-                              {m.status === "active" && m.sessions_remaining === 0 && (
-                                <div className="text-center pt-2">
-                                  <p className="text-destructive text-sm font-medium mb-1">All sessions used</p>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setNewMembership(p => ({ ...p, client_id: m.client_id, client_name: m.client_name, client_mobile: m.client_mobile }));
-                                      setClientFound(true);
-                                      setShowAddMembership(true);
-                                    }}
-                                    className="text-primary text-xs hover:underline"
-                                  >
-                                    Renew Membership →
-                                  </button>
+                                <div className="bg-muted/60 rounded-xl py-2">
+                                  <p className="font-black text-xl leading-none text-yellow-500">{taken}</p>
+                                  <p className="text-muted-foreground text-[10px] mt-0.5">Taken</p>
                                 </div>
-                              )}
+                                <div className="bg-muted/60 rounded-xl py-2">
+                                  <p className={`font-black text-xl leading-none ${
+                                    m.sessions_remaining <= 0 ? "text-destructive" : m.sessions_remaining <= 3 ? "text-yellow-500" : "text-green-500"
+                                  }`}>
+                                    {m.sessions_remaining}
+                                  </p>
+                                  <p className="text-muted-foreground text-[10px] mt-0.5">Left</p>
+                                </div>
+                              </div>
+
+                              <div className="w-full bg-muted rounded-full h-1.5 mb-3">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-yellow-500" : "bg-primary"}`}
+                                  style={{ width: `${Math.min(pct, 100)}%` }}
+                                />
+                              </div>
+
+                              <div className="flex justify-between items-center">
+                                <span className={`text-xs ${
+                                  isExpired ? "text-destructive font-bold" : isExpiringSoon ? "text-yellow-500 font-bold" : "text-muted-foreground"
+                                }`}>
+                                  {isExpired ? "⚠ Expired" : isExpiringSoon ? `⏰ ${daysLeft}d left` : `📅 ${daysLeft} days`}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  m.status === "active" && !isExpired ? "bg-green-500/15 text-green-500" :
+                                  m.status === "paused" ? "bg-yellow-500/15 text-yellow-500" :
+                                  "bg-destructive/15 text-destructive"
+                                }`}>
+                                  {isExpired && m.status === "active" ? "expired" : m.status}
+                                </span>
+                              </div>
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -3454,6 +3486,205 @@ cryorevive.in | +91 08595850920`;
               </Card>
             </div>
           )}
+
+          {/* Member detail modal */}
+          {selectedMember && (() => {
+            const m = selectedMember;
+            const taken = Math.max(0, m.sessions_total - m.sessions_remaining);
+            const pct = m.sessions_total > 0 ? Math.round((taken / m.sessions_total) * 100) : 0;
+            const daysLeft = Math.ceil((new Date(m.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            const isExpired = daysLeft <= 0;
+            return (
+              <div
+                className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-0 sm:p-4"
+                onClick={e => { if (e.target === e.currentTarget) setSelectedMember(null); }}
+              >
+                <div className="w-full sm:max-w-lg bg-card rounded-t-2xl sm:rounded-2xl border border-border overflow-hidden max-h-[92vh] flex flex-col">
+                  <div className={`h-1.5 w-full shrink-0 ${
+                    m.package_type === "elite" ? "bg-gradient-to-r from-purple-500 to-pink-500" :
+                    m.package_type === "athlete" ? "bg-gradient-to-r from-blue-500 to-cyan-500" :
+                    m.package_type === "custom" ? "bg-gradient-to-r from-amber-500 to-orange-500" :
+                    "bg-gradient-to-r from-green-500 to-emerald-500"
+                  }`} />
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+                    <div>
+                      <h2 className="font-bold text-lg">{m.client_name}</h2>
+                      <p className="text-muted-foreground text-sm">{m.client_mobile}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedMember(null)}
+                      className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                      aria-label="Close"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    {/* Package facts */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-muted/50 rounded-xl p-3">
+                        <p className="text-muted-foreground text-xs mb-1">Package</p>
+                        <p className="font-bold">{m.package_name}</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-xl p-3">
+                        <p className="text-muted-foreground text-xs mb-1">Amount Paid</p>
+                        <p className="font-bold text-primary">{fmt(m.price_paid)}</p>
+                      </div>
+                      <div className="bg-muted/50 rounded-xl p-3">
+                        <p className="text-muted-foreground text-xs mb-1">Start Date</p>
+                        <p className="font-medium text-sm">
+                          {new Date(m.start_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      </div>
+                      <div className="bg-muted/50 rounded-xl p-3">
+                        <p className="text-muted-foreground text-xs mb-1">End Date</p>
+                        <p className={`font-medium text-sm ${isExpired ? "text-destructive" : ""}`}>
+                          {new Date(m.end_date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          {isExpired ? " · expired" : ` · ${daysLeft}d left`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Session tracker */}
+                    <div className="bg-muted/50 rounded-2xl p-4">
+                      <p className="text-muted-foreground text-xs uppercase tracking-wider mb-3">Session Tracker</p>
+                      <div className="grid grid-cols-3 gap-3 mb-4 text-center">
+                        <div>
+                          <p className="text-3xl font-black">{m.sessions_total}</p>
+                          <p className="text-muted-foreground text-xs mt-1">Given</p>
+                        </div>
+                        <div>
+                          <p className="text-3xl font-black text-yellow-500">{taken}</p>
+                          <p className="text-muted-foreground text-xs mt-1">Taken</p>
+                        </div>
+                        <div>
+                          <p className={`text-3xl font-black ${
+                            m.sessions_remaining <= 0 ? "text-destructive" : m.sessions_remaining <= 3 ? "text-yellow-500" : "text-green-500"
+                          }`}>
+                            {m.sessions_remaining}
+                          </p>
+                          <p className="text-muted-foreground text-xs mt-1">Remaining</p>
+                        </div>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-3 mb-1">
+                        <div
+                          className={`h-3 rounded-full transition-all ${pct >= 90 ? "bg-destructive" : pct >= 70 ? "bg-yellow-500" : "bg-primary"}`}
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-muted-foreground text-xs text-right">{pct}% used</p>
+                      <div className="mt-3 bg-background/60 rounded-xl p-3 text-xs text-muted-foreground space-y-0.5">
+                        <p>1 session: Ice Bath, Sauna, Compression, Massage, Cupping, Cryo Chamber</p>
+                        <p>2 sessions: Contrast Therapy, Physiotherapy</p>
+                        <p>4 sessions: Full Body Recovery</p>
+                      </div>
+                    </div>
+
+                    {/* Edit */}
+                    <div className="bg-muted/50 rounded-2xl p-4">
+                      <p className="text-muted-foreground text-xs uppercase tracking-wider mb-3">Edit Membership</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">Sessions Total</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={memberEdit.sessions_total}
+                            onChange={e => setMemberEdit(p => ({ ...p, sessions_total: parseInt(e.target.value) || 0 }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">Sessions Remaining</label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={memberEdit.sessions_remaining}
+                            onChange={e => setMemberEdit(p => ({ ...p, sessions_remaining: parseInt(e.target.value) || 0 }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">End Date</label>
+                          <Input
+                            type="date"
+                            value={memberEdit.end_date}
+                            onChange={e => setMemberEdit(p => ({ ...p, end_date: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">Status</label>
+                          <select
+                            value={memberEdit.status}
+                            onChange={e => setMemberEdit(p => ({ ...p, status: e.target.value as MembershipStatus }))}
+                            className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="expired">Expired</option>
+                          </select>
+                        </div>
+                      </div>
+                      {memberEditError && <p className="text-destructive text-xs mt-2">{memberEditError}</p>}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full mt-3"
+                        disabled={memberEditSaving}
+                        onClick={handleUpdateMember}
+                      >
+                        {memberEditSaving ? "Saving..." : "Save Changes"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="shrink-0 p-4 border-t border-border space-y-2">
+                    {m.status === "active" && !isExpired && m.sessions_remaining > 0 && (
+                      <Button
+                        className="w-full"
+                        onClick={() => { setUseSessionMembershipId(m.id); setUseSessionServiceType(""); }}
+                      >
+                        ✓ Mark Session Used
+                      </Button>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {m.status === "active" ? (
+                        <Button
+                          variant="outline"
+                          className="text-yellow-600 border-yellow-500/40 hover:bg-yellow-500/10"
+                          onClick={async () => { await toggleMembershipPause(m.id, m.status); setSelectedMember(null); }}
+                        >
+                          ⏸ Pause
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="text-green-600 border-green-500/40 hover:bg-green-500/10"
+                          onClick={async () => { await toggleMembershipPause(m.id, m.status); setSelectedMember(null); }}
+                        >
+                          ▶ Resume
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        className="text-primary border-primary/40 hover:bg-primary/10"
+                        onClick={() => {
+                          setNewMembership(p => ({ ...p, client_id: m.client_id, client_name: m.client_name, client_mobile: m.client_mobile }));
+                          setClientFound(true);
+                          setShowAddMembership(true);
+                          setSelectedMember(null);
+                        }}
+                      >
+                        🔄 Renew
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Use-session service picker modal */}
           {useSessionMembershipId && (() => {
@@ -3464,7 +3695,7 @@ cryorevive.in | +91 08595850920`;
             const serviceKeys = Array.from(new Set([...Object.keys(SERVICE_LABELS), ...Object.keys(SESSION_WEIGHTS)]));
             const label = (k: string) => SERVICE_LABELS[k] ?? k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
             return (
-            <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setUseSessionMembershipId(null)}>
+            <div className="fixed inset-0 z-[60] bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setUseSessionMembershipId(null)}>
               <div className="w-full sm:max-w-sm bg-card rounded-t-2xl sm:rounded-2xl p-5 border border-border" onClick={e => e.stopPropagation()}>
                 <h3 className="font-bold mb-1">Log Session Usage</h3>
                 {usm && (
