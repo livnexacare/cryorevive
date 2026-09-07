@@ -547,7 +547,7 @@ export default function StaffDashboard() {
 
   return (
     <>
-      <SEO title="Staff Dashboard — CryoRevive" />
+      <SEO title="Staff Dashboard — CryoRevive" noindex />
 
       <div className="no-print min-h-screen bg-background text-foreground pb-24">
         <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between sticky top-0 z-10">

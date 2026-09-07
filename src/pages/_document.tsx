@@ -1,12 +1,14 @@
 import { cn } from "@/lib/utils";
 import { Html, Head, Main, NextScript } from "next/document";
-import { SEOElements } from "@/components/SEO";
 
 export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        <SEOElements />
+        {/* SEO + social-share tags live in <SEO /> (see _app.tsx for the
+            site-wide default and individual pages for overrides). Title and
+            og:* tags must NOT be set here — next/document is static and cannot
+            be overridden per-page, which is what broke WhatsApp previews. */}
         {/* Favicon */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png" />

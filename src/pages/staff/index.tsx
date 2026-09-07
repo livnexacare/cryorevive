@@ -60,7 +60,7 @@ export default function StaffLogin() {
 
   return (
     <>
-      <SEO title="Staff Access — CryoRevive" />
+      <SEO title="Staff Access — CryoRevive" noindex />
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-sm">
           <CardHeader className="text-center">

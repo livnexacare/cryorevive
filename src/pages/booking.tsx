@@ -394,6 +394,7 @@ Please contact me to confirm. Thank you!`.trim();
       <SEO
         title="Book a Session | CryoRevive"
         description="Book ice bath, steam sauna, contrast therapy, or cryo chamber sessions. Instant confirmation via WhatsApp."
+        url="/booking"
       />
       <Navigation />
       <main className="min-h-screen bg-background">

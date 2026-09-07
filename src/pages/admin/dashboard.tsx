@@ -1512,7 +1512,7 @@ cryorevive.in | +91 08595850920`;
 
   return (
     <>
-      <SEO title="Admin Dashboard - CryoRevive" />
+      <SEO title="Admin Dashboard - CryoRevive" noindex />
       <div className="min-h-screen bg-background">
         <header className="border-b border-border bg-card sticky top-0 z-20">
           <div className="container mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">

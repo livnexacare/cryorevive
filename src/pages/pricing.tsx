@@ -205,6 +205,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
       <SEO 
         title="Pricing & Memberships | Recovery Plans - CryoRevive"
         description="Flexible pricing for ice bath, sauna, and contrast therapy. Single sessions, monthly memberships, and athlete packages available."
+        url="/pricing"
       />
       <Navigation />
       <main className="min-h-screen bg-background">

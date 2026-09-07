@@ -29,7 +29,7 @@ export default function AdminLogin() {
 
   return (
     <>
-      <SEO title="Admin Login - CryoRevive" />
+      <SEO title="Admin Login - CryoRevive" noindex />
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">

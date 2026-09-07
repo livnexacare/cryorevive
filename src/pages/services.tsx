@@ -213,6 +213,7 @@ export default function Services() {
       <SEO 
         title="Recovery Services | Ice Bath, Sauna & Contrast Therapy - CryoRevive"
         description="Professional cold plunge, steam sauna, contrast therapy, and mobile recovery services for athletes. Science-backed protocols for peak performance."
+        url="/services"
       />
       <Navigation />
       <main className="min-h-screen bg-background">
