@@ -10,6 +10,7 @@ so money is labelled "Rs." and icon glyphs are dropped in favour of text.
 """
 
 import io
+import os
 import re
 from datetime import datetime
 
@@ -17,6 +18,12 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
+
+# CryoRevive snowflake+flame mark, background pre-matched to the header
+# band (#0f172a) so it drops in seamlessly. Bundled with the backend.
+_LOGO_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "assets", "cryo-logo-mark.png"
+)
 
 # ── Company / brand ────────────────────────────────────────────────────────
 COMPANY = {
@@ -130,6 +137,10 @@ class _P:
         self.c.setFillColor(colors.HexColor(fill))
         self.c.circle(cx * mm, self._ty(cy), r * mm, stroke=0, fill=1)
 
+    def image(self, path, x, top, w, h):
+        self.c.drawImage(path, x * mm, (self.PH - top - h) * mm, w * mm, h * mm,
+                         preserveAspectRatio=True, mask="auto")
+
     def line(self, x1, y1, x2, y2, color="#0f172a", lw=0.5):
         self.c.setStrokeColor(colors.HexColor(color))
         self.c.setLineWidth(lw * mm)
@@ -193,13 +204,18 @@ def generate_invoice_pdf(booking: dict, invoice_number: str) -> bytes:
 
     # ── DARK HEADER BAND ─────────────────────────────────────────────────
     p.box(0, 0, W, 42, fill="#0f172a")
-    p.circle(22, 16, 8, fill="#06b6d4")
-    p.circle(25, 13, 4, fill="#ef4444")
+    try:
+        p.image(_LOGO_PATH, 10, 7, 27, 27)
+    except Exception:
+        # Fallback: simple two-circle mark if the asset is unavailable
+        p.circle(22, 16, 8, fill="#06b6d4")
+        p.circle(25, 13, 4, fill="#ef4444")
 
-    p.text(32, 18, "Cryo", size=20, bold=True, color="#ffffff")
+    brand_x = 41.0
+    p.text(brand_x, 18, "Cryo", size=20, bold=True, color="#ffffff")
     cryo_w = p.text_width("Cryo", 20, bold=True)
-    p.text(32 + cryo_w, 18, "Revive", size=20, bold=True, color="#06b6d4")
-    p.text(32, 23, "- " + COMPANY["tagline"] + " -", size=7, color="#94a3b8")
+    p.text(brand_x + cryo_w, 18, "Revive", size=20, bold=True, color="#06b6d4")
+    p.text(brand_x, 24, "- " + COMPANY["tagline"] + " -", size=7, color="#94a3b8")
 
     for i, t in enumerate(["RECOVER", "RECHARGE", "PERFORM", "BETTER"]):
         p.text(105, 10 + i * 7, t, size=8, color="#94a3b8", align="center")
