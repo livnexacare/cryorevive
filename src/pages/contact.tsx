@@ -32,6 +32,7 @@ export default function Contact() {
       <SEO
         title="Contact | CryoRevive — Book Recovery or Event Services"
         description="Get in touch with CryoRevive. Book recovery sessions, inquire about mobile event services, or ask us anything via WhatsApp."
+        url="/contact"
       />
       <Navigation />
       <main className="min-h-screen bg-background">

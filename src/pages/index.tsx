@@ -18,6 +18,7 @@ export default function Home({ prices = [] }: { prices: ServicePrice[] }) {
       <SEO
         title="CryoRevive - Elite Athlete Recovery | Ice Bath & Sauna Therapy"
         description="Science-backed cold plunge, steam sauna, and contrast therapy for athletes. Accelerate recovery, reduce inflammation, and optimize performance."
+        url="/"
       />
       <Navigation />
       <main>
