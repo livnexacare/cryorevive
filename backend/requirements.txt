@@ -9,3 +9,4 @@ resend==2.4.0
 razorpay==2.0.1
 python-multipart==0.0.9
 pywebpush==2.0.0
+reportlab==4.2.2

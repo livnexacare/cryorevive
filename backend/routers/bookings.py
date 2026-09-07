@@ -1,3 +1,4 @@
+import io
 import os
 import uuid
 import asyncio
@@ -6,6 +7,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from database import db_execute, db_fetchrow, db_fetch, row_to_dict, rows_to_list
 from models.booking import BookingIn, BookingStatusUpdate, BookingUpdate
@@ -168,6 +170,44 @@ async def get_booking(booking_id: str, x_admin_key: str = Header(default="")):
     if not row:
         raise HTTPException(status_code=404, detail="Booking not found")
     return row_to_dict(row)
+
+
+@router.get("/bookings/{booking_id}/invoice")
+async def download_invoice(
+    booking_id: str,
+    x_admin_key: str = Header(None, alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+
+    row = await db_fetchrow("SELECT * FROM bookings WHERE id = $1", booking_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    booking = row_to_dict(row)
+
+    if booking.get("payment_status") not in ("paid", "partial"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invoice can only be generated for paid bookings",
+        )
+
+    # Import here to avoid pulling reportlab into every startup path
+    from utils.invoice import generate_invoice_pdf, generate_invoice_number
+
+    invoice_number = generate_invoice_number(
+        str(booking["id"]),
+        str(booking.get("date", "")),
+    )
+
+    pdf_bytes = generate_invoice_pdf(booking, invoice_number)
+
+    filename = f"CryoRevive-Invoice-{invoice_number.replace('/', '-')}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/bookings/{booking_id}/status")

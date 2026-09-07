@@ -929,6 +929,166 @@ export default function AdminDashboard() {
     finally { setActionLoading(null); }
   };
 
+  // ── GST invoices ────────────────────────────────────────────────────────
+  const handleDownloadInvoice = async (bookingId: string, clientName: string) => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/bookings/${bookingId}/invoice`,
+        { headers: { "X-Admin-Key": ADMIN_KEY } }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        alert(err.detail || "Failed to generate invoice");
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `CryoRevive-Invoice-${clientName.replace(/\s+/g, "-")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch {
+      alert("Failed to download invoice");
+    }
+  };
+
+  // GSTR-1 CSV for the CA: every paid booking + membership sale in the
+  // selected month (`expenseMonth`, YYYY-MM). Uses `revenueBookings` (limit
+  // 200, unfiltered) rather than the status-filtered Bookings-tab list.
+  const handleExportGSTR1 = () => {
+    const [year, month] = expenseMonth.split("-").map(Number);
+    const monthBookings = revenueBookings.filter(b => {
+      const d = new Date(b.date);
+      return d.getFullYear() === year &&
+             d.getMonth() + 1 === month &&
+             b.payment_status === "paid";
+    });
+    const monthMemberships = memberships.filter(m => {
+      const d = new Date(m.created_at);
+      return d.getFullYear() === year && d.getMonth() + 1 === month;
+    });
+
+    const rows = [
+      ["Invoice No", "Date", "Client Name", "Phone", "Service",
+       "SAC Code", "Taxable Value", "CGST 9%", "SGST 9%",
+       "Total GST", "Invoice Total", "Payment Status", "Type"].join(","),
+    ];
+
+    let invCounter = 1;
+
+    monthBookings.forEach(b => {
+      const total = b.amount || 0;
+      const taxable = +(total / 1.18).toFixed(2);
+      const gst = +(total - taxable).toFixed(2);
+      const cgst = +(gst / 2).toFixed(2);
+      const sgst = +(gst / 2).toFixed(2);
+      const invNo = `CRY/${year}-${String(year + 1).slice(2)}/${String(invCounter++).padStart(4, "0")}`;
+      rows.push([
+        invNo, String(b.date).slice(0, 10),
+        `"${b.name}"`, b.phone,
+        `"${b.service_type.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}"`,
+        "999312",
+        taxable, cgst, sgst, gst, total,
+        b.payment_status, "B2C",
+      ].join(","));
+    });
+
+    monthMemberships.forEach(m => {
+      const total = m.price_paid || 0;
+      const taxable = +(total / 1.18).toFixed(2);
+      const gst = +(total - taxable).toFixed(2);
+      const cgst = +(gst / 2).toFixed(2);
+      const sgst = +(gst / 2).toFixed(2);
+      const invNo = `CRY/${year}-${String(year + 1).slice(2)}/M${String(invCounter++).padStart(4, "0")}`;
+      const date = new Date(m.created_at).toISOString().split("T")[0];
+      rows.push([
+        invNo, date,
+        `"${m.client_name}"`, m.client_mobile,
+        `"${m.package_name} Membership"`,
+        "999312",
+        taxable, cgst, sgst, gst, total,
+        "paid", "B2C",
+      ].join(","));
+    });
+
+    const totalRevenue = [...monthBookings, ...monthMemberships]
+      .reduce((s: number, x: any) => s + (x.amount || x.price_paid || 0), 0);
+    const totalTaxable = +(totalRevenue / 1.18).toFixed(2);
+    const totalGST = +(totalRevenue - totalTaxable).toFixed(2);
+
+    rows.push("");
+    rows.push(["TOTAL", "", "", "", "", "",
+      totalTaxable, +(totalGST / 2).toFixed(2),
+      +(totalGST / 2).toFixed(2), totalGST, totalRevenue,
+      "", "",
+    ].join(","));
+
+    const csv = rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `CryoRevive-GSTR1-${expenseMonth}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleExportInvoiceList = () => {
+    const [year, month] = expenseMonth.split("-").map(Number);
+    const monthBookings = revenueBookings.filter(b => {
+      const d = new Date(b.date);
+      return d.getFullYear() === year &&
+             d.getMonth() + 1 === month &&
+             b.payment_status === "paid";
+    });
+    const monthMemberships = memberships.filter(m => {
+      const d = new Date(m.created_at);
+      return d.getFullYear() === year && d.getMonth() + 1 === month;
+    });
+
+    const totalRev = [...monthBookings, ...monthMemberships]
+      .reduce((s: number, x: any) => s + (x.amount || x.price_paid || 0), 0);
+    const taxable = +(totalRev / 1.18).toFixed(2);
+    const gst = +(totalRev - taxable).toFixed(2);
+
+    const monthName = new Date(expenseMonth + "-01")
+      .toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+
+    const summary = `
+CryoRevive — GST Summary for ${monthName}
+Livnexa Care Private Limited | PAN: AAGCL7757C
+==========================================
+
+SALES SUMMARY (B2C)
+SAC Code: 999312 | GST Rate: 18%
+
+Session Bookings: ${monthBookings.length} | ₹${monthBookings.reduce((s: number, b: any) => s + (b.amount || 0), 0).toLocaleString("en-IN")}
+Memberships Sold: ${monthMemberships.length} | ₹${monthMemberships.reduce((s: number, m: any) => s + (m.price_paid || 0), 0).toLocaleString("en-IN")}
+
+------------------------------------------
+Total Gross Revenue:  ₹${totalRev.toLocaleString("en-IN")}
+Taxable Value:        ₹${taxable.toLocaleString("en-IN")}
+CGST @ 9%:            ₹${(gst / 2).toFixed(2)}
+SGST @ 9%:            ₹${(gst / 2).toFixed(2)}
+Total GST:            ₹${gst.toLocaleString("en-IN")}
+------------------------------------------
+Place of Supply: Uttar Pradesh (09)
+All transactions: B2C (Individual clients)
+No B2B transactions this period
+    `.trim();
+
+    const blob = new Blob([summary], { type: "text/plain" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `CryoRevive-GST-Summary-${expenseMonth}.txt`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   const createPayroll = async (e: React.FormEvent) => {
     e.preventDefault();
     setPayrollFormLoading(true); setPayrollFormError("");
@@ -1669,6 +1829,15 @@ cryorevive.in | +91 08595850920`;
                               </Button>
                             )}
                           </div>
+                          {(b.payment_status === "paid" || b.payment_status === "partial") && (
+                            <button
+                              onClick={() => handleDownloadInvoice(b.id, b.name)}
+                              className="mt-2 w-full px-2 py-1.5 text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/20 rounded-lg transition-colors flex items-center justify-center gap-1 whitespace-nowrap"
+                              title="Download GST Invoice"
+                            >
+                              🧾 Invoice
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1745,6 +1914,15 @@ cryorevive.in | +91 08595850920`;
                                     <Button size="sm" variant="outline" onClick={() => setEditingBookingId(editingBookingId === b.id ? null : b.id)} className="h-8 px-2">
                                       <Pencil className="w-3.5 h-3.5" />
                                     </Button>
+                                    {(b.payment_status === "paid" || b.payment_status === "partial") && (
+                                      <button
+                                        onClick={() => handleDownloadInvoice(b.id, b.name)}
+                                        className="px-2 py-1.5 text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/20 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap"
+                                        title="Download GST Invoice"
+                                      >
+                                        🧾 Invoice
+                                      </button>
+                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -2061,6 +2239,32 @@ cryorevive.in | +91 08595850920`;
                       ))}
                     </div>
                   )}
+                </CardContent>
+              </Card>
+
+              {/* ── GSTR-1 Export ── */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">📊 GSTR-1 Export</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground text-xs mb-4">
+                    Export all paid bookings and membership sales for <span className="text-foreground font-bold">{monthLabel(expenseMonth)}</span> as CSV for your CA.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={handleExportGSTR1}
+                      className="flex-1 py-3 bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded-xl text-sm hover:bg-blue-600/30 transition-colors font-medium"
+                    >
+                      📥 Export GSTR-1 CSV
+                    </button>
+                    <button
+                      onClick={handleExportInvoiceList}
+                      className="flex-1 py-3 bg-purple-600/20 text-purple-300 border border-purple-500/30 rounded-xl text-sm hover:bg-purple-600/30 transition-colors font-medium"
+                    >
+                      📋 Invoice Summary
+                    </button>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -3936,6 +4140,30 @@ function BookingEditForm({ booking, apiUrl, adminKey, onSaved, onCancel }: {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
+  const downloadInvoice = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/bookings/${booking.id}/invoice`, {
+        headers: { "X-Admin-Key": adminKey },
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({})) as { detail?: string };
+        alert(e.detail || "Failed to generate invoice");
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `CryoRevive-Invoice-${booking.name.replace(/\s+/g, "-")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch {
+      alert("Failed to download invoice");
+    }
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true); setErr("");
@@ -4013,6 +4241,15 @@ function BookingEditForm({ booking, apiUrl, adminKey, onSaved, onCancel }: {
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
       </div>
+      {(booking.payment_status === "paid" || booking.payment_status === "partial") && (
+        <button
+          type="button"
+          onClick={downloadInvoice}
+          className="w-full py-2.5 bg-green-600/20 text-green-300 border border-green-500/30 rounded-xl text-sm hover:bg-green-600/30 transition-colors flex items-center justify-center gap-2"
+        >
+          🧾 Download GST Invoice
+        </button>
+      )}
     </form>
   );
 }
