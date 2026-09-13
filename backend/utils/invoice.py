@@ -33,7 +33,7 @@ COMPANY = {
     "pan": "AAGCL7757C",
     "cin": "U86909UW2026 PTC 250115",
     "gstin": "09AAGCL7757C1Z9",
-    "address": "Second Floor, B 94, Sector 36",
+    "address": "C-168, Omnicron 1, Mathurapur",
     "city": "Greater Noida, Uttar Pradesh - 201310",
     "phone": "+91 8595850920",
     "email": "info@cryorevive.in",
