@@ -162,8 +162,9 @@ export default function Contact() {
                           <div>
                             <h3 className="font-display font-bold mb-1">Facility</h3>
                             <p className="text-sm text-muted-foreground">
-                              B-94, Sector 36<br />
-                              Greater Noida, Uttar Pradesh
+                              C-168, Omnicron 1, Mathurapur<br />
+                              Greater Noida, Uttar Pradesh<br />
+                              <span className="text-xs italic">Near Optimal Fitness Gym</span>
                             </p>
                           </div>
                         </div>

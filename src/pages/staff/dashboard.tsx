@@ -1912,7 +1912,7 @@ export default function StaffDashboard() {
             <span>📞 9891430920 | 8595850920</span>
             <span>✉ info@cryorevive.in</span>
             <span>🌐 www.cryorevive.in</span>
-            <span>📍 C-168, Omnicron 1, Greater Noida, UP</span>
+            <span>📍 C-168, Omnicron 1, Mathurapur, Greater Noida, UP</span>
           </div>
         </div>
       )}

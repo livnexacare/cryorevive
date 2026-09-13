@@ -32,6 +32,7 @@ export function Footer() {
               <li><Link href="/booking" className="text-muted-foreground hover:text-foreground">Book a Session</Link></li>
               <li><Link href="/booking?tab=event" className="text-muted-foreground hover:text-foreground">Mobile Event</Link></li>
               <li><Link href="/services" className="text-muted-foreground hover:text-foreground">Services</Link></li>
+              <li><Link href="/find-us" className="text-muted-foreground hover:text-foreground">Find Us</Link></li>
               <li><Link href="/contact" className="text-muted-foreground hover:text-foreground">Contact</Link></li>
             </ul>
           </div>
@@ -41,7 +42,7 @@ export function Footer() {
             <ul className="space-y-3 text-sm">
               <li className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                <span className="text-muted-foreground">B-94, Sector 36, Greater Noida, UP</span>
+                <span className="text-muted-foreground">C-168, Omnicron 1, Mathurapur, Greater Noida, UP</span>
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
