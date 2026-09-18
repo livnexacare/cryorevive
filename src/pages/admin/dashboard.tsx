@@ -1461,7 +1461,9 @@ No B2B transactions this period
         method: "PATCH",
         headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
         body: JSON.stringify({
-          price: parseInt(edit.price),
+          // The discounted/final price is the effective selling price — it's what
+          // must land in `price`, since that's the field the public site reads.
+          price: parseInt(edit.discounted_price) || parseInt(edit.price),
           duration: edit.duration,
           is_active: edit.is_active,
           original_price: parseInt(edit.original_price) || parseInt(edit.price),
@@ -2716,7 +2718,10 @@ cryorevive.in | +91 08595850920`;
                                     type="number"
                                     min={0}
                                     value={edit.price}
-                                    onChange={e => setPriceEdits(p => ({ ...p, [s.service_type]: { ...p[s.service_type], price: e.target.value } }))}
+                                    onChange={e => setPriceEdits(p => ({
+                                      ...p,
+                                      [s.service_type]: { ...p[s.service_type], price: e.target.value, discounted_price: e.target.value },
+                                    }))}
                                     className="w-28 h-8 text-sm"
                                   />
                                 </TableCell>
@@ -2767,6 +2772,7 @@ cryorevive.in | +91 08595850920`;
                                               ...p[s.service_type],
                                               discount_percent: e.target.value,
                                               discounted_price: String(discounted),
+                                              price: String(discounted),
                                             },
                                           }));
                                         }}
@@ -2778,7 +2784,10 @@ cryorevive.in | +91 08595850920`;
                                       <Input
                                         type="number" min={0}
                                         value={edit.discounted_price}
-                                        onChange={e => setPriceEdits(p => ({ ...p, [s.service_type]: { ...p[s.service_type], discounted_price: e.target.value } }))}
+                                        onChange={e => setPriceEdits(p => ({
+                                          ...p,
+                                          [s.service_type]: { ...p[s.service_type], discounted_price: e.target.value, price: e.target.value },
+                                        }))}
                                         className="h-8 text-sm"
                                       />
                                     </div>
