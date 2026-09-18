@@ -25,6 +25,7 @@ SESSION_WEIGHTS = {
     "cupping_therapy": 1,
     "cryo_chamber": 1,
     "mobile_unit": 1,
+    "kneeva": 1,
     "contrast_therapy": 2,
     "physiotherapy": 2,
     "full_body_recovery": 4,
@@ -125,15 +126,21 @@ async def use_session(
     if m["status"] != "active":
         raise HTTPException(status_code=400, detail=f"Membership is {m['status']}")
 
+    # Older rows can have a NULL sessions_remaining if it was never backfilled;
+    # recompute from total - used rather than letting `None < int` blow up.
+    sessions_remaining = m["sessions_remaining"]
+    if sessions_remaining is None:
+        sessions_remaining = m["sessions_total"] - m.get("sessions_used", 0)
+
     sessions_consumed = SESSION_WEIGHTS.get(data.service_type, 1)
     service_label = data.service_type.replace("_", " ").title()
 
-    if m["sessions_remaining"] < sessions_consumed:
+    if sessions_remaining < sessions_consumed:
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Not enough sessions remaining. {service_label} requires "
-                f"{sessions_consumed} session(s), but only {m['sessions_remaining']} left."
+                f"{sessions_consumed} session(s), but only {sessions_remaining} left."
             ),
         )
 
@@ -149,7 +156,7 @@ async def use_session(
     )
 
     new_used = m["sessions_used"] + sessions_consumed
-    new_remaining = m["sessions_remaining"] - sessions_consumed
+    new_remaining = sessions_remaining - sessions_consumed
     new_status = "active" if new_remaining > 0 else "expired"
 
     row = await db_fetchrow(

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { SEO } from "@/components/SEO";
@@ -23,6 +23,7 @@ const SERVICE_LABELS: Record<string, string> = {
   contrast_therapy: "Contrast Therapy",
   cryo_chamber: "Cryo Chamber",
   mobile_unit: "Mobile Unit",
+  kneeva: "Kneeva",
 };
 
 type BookingStatus = "pending" | "confirmed" | "cancelled" | "completed" | "no_show" | "postponed";
@@ -132,6 +133,11 @@ interface ServicePrice {
   price: number;
   is_active: boolean;
   updated_at: string;
+  original_price?: number | null;
+  discount_percent?: number | null;
+  discounted_price?: number | null;
+  discount_label?: string | null;
+  is_featured?: boolean | null;
 }
 
 interface EventPricing {
@@ -241,7 +247,7 @@ const EXPENSE_ICONS: Record<string, string> = Object.fromEntries(
 // How many package sessions each service consumes (mirrors the backend).
 const SESSION_WEIGHTS: Record<string, number> = {
   ice_bath: 1, steam_sauna: 1, compression_therapy: 1, deep_tissue_massage: 1,
-  cupping_therapy: 1, cryo_chamber: 1, mobile_unit: 1,
+  cupping_therapy: 1, cryo_chamber: 1, mobile_unit: 1, kneeva: 1,
   contrast_therapy: 2, physiotherapy: 2,
   full_body_recovery: 4,
 };
@@ -439,7 +445,11 @@ export default function AdminDashboard() {
   // Pricing state
   const [servicePrices, setServicePrices] = useState<ServicePrice[]>([]);
   const [priceLoading, setPriceLoading] = useState(false);
-  const [priceEdits, setPriceEdits] = useState<Record<string, { price: string; duration: string; is_active: boolean }>>({});
+  const [priceEdits, setPriceEdits] = useState<Record<string, {
+    price: string; duration: string; is_active: boolean;
+    original_price: string; discount_percent: string; discounted_price: string;
+    discount_label: string; is_featured: boolean;
+  }>>({});
   const [priceSaving, setPriceSaving] = useState<string | null>(null);
   const [priceSaveResult, setPriceSaveResult] = useState<Record<string, string>>({});
   const [eventTiers, setEventTiers] = useState<EventPricing[]>([]);
@@ -594,8 +604,19 @@ export default function AdminDashboard() {
       .then((data: ServicePrice[]) => {
         if (cancelled) return;
         setServicePrices(data);
-        const edits: Record<string, { price: string; duration: string; is_active: boolean }> = {};
-        data.forEach(s => { edits[s.service_type] = { price: String(s.price), duration: s.duration, is_active: s.is_active }; });
+        const edits: typeof priceEdits = {};
+        data.forEach(s => {
+          edits[s.service_type] = {
+            price: String(s.price),
+            duration: s.duration,
+            is_active: s.is_active,
+            original_price: String(s.original_price ?? s.price),
+            discount_percent: String(s.discount_percent ?? 0),
+            discounted_price: String(s.discounted_price ?? s.price),
+            discount_label: s.discount_label ?? "",
+            is_featured: !!s.is_featured,
+          };
+        });
         setPriceEdits(edits);
       })
       .catch(() => {})
@@ -1391,7 +1412,16 @@ No B2B transactions this period
       const res = await fetch(`${API_URL}/api/pricing/services/${serviceType}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
-        body: JSON.stringify({ price: parseInt(edit.price), duration: edit.duration, is_active: edit.is_active }),
+        body: JSON.stringify({
+          price: parseInt(edit.price),
+          duration: edit.duration,
+          is_active: edit.is_active,
+          original_price: parseInt(edit.original_price) || parseInt(edit.price),
+          discount_percent: parseInt(edit.discount_percent) || 0,
+          discounted_price: parseInt(edit.discounted_price) || parseInt(edit.price),
+          discount_label: edit.discount_label || null,
+          is_featured: edit.is_featured,
+        }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       setPriceSaveResult(r => ({ ...r, [serviceType]: "saved" }));
@@ -2595,8 +2625,12 @@ cryorevive.in | +91 08595850920`;
                             if (!edit) return null;
                             const result = priceSaveResult[s.service_type];
                             return (
-                              <TableRow key={s.service_type}>
-                                <TableCell className="font-medium">{s.name}</TableCell>
+                              <Fragment key={s.service_type}>
+                              <TableRow>
+                                <TableCell className="font-medium">
+                                  {s.name}
+                                  {edit.is_featured && <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-medium">Featured</span>}
+                                </TableCell>
                                 <TableCell>
                                   <Input
                                     value={edit.duration}
@@ -2633,6 +2667,70 @@ cryorevive.in | +91 08595850920`;
                                   </div>
                                 </TableCell>
                               </TableRow>
+                              <TableRow className="hover:bg-transparent">
+                                <TableCell colSpan={5} className="bg-muted/20 py-3">
+                                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+                                    <div>
+                                      <label className="text-xs text-muted-foreground mb-1 block">Original Price (₹)</label>
+                                      <Input
+                                        type="number" min={0}
+                                        value={edit.original_price}
+                                        onChange={e => setPriceEdits(p => ({ ...p, [s.service_type]: { ...p[s.service_type], original_price: e.target.value } }))}
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-muted-foreground mb-1 block">Discount %</label>
+                                      <Input
+                                        type="number" min={0} max={100}
+                                        value={edit.discount_percent}
+                                        onChange={e => {
+                                          const disc = parseInt(e.target.value) || 0;
+                                          const orig = parseInt(edit.original_price) || 0;
+                                          const discounted = Math.round(orig * (1 - disc / 100));
+                                          setPriceEdits(p => ({
+                                            ...p,
+                                            [s.service_type]: {
+                                              ...p[s.service_type],
+                                              discount_percent: e.target.value,
+                                              discounted_price: String(discounted),
+                                            },
+                                          }));
+                                        }}
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-muted-foreground mb-1 block">Final Price (₹)</label>
+                                      <Input
+                                        type="number" min={0}
+                                        value={edit.discounted_price}
+                                        onChange={e => setPriceEdits(p => ({ ...p, [s.service_type]: { ...p[s.service_type], discounted_price: e.target.value } }))}
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-xs text-muted-foreground mb-1 block">Label</label>
+                                      <Input
+                                        value={edit.discount_label}
+                                        onChange={e => setPriceEdits(p => ({ ...p, [s.service_type]: { ...p[s.service_type], discount_label: e.target.value } }))}
+                                        placeholder="e.g. Launch Offer"
+                                        className="h-8 text-sm"
+                                      />
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer h-8">
+                                      <input
+                                        type="checkbox"
+                                        checked={edit.is_featured}
+                                        onChange={() => setPriceEdits(p => ({ ...p, [s.service_type]: { ...p[s.service_type], is_featured: !p[s.service_type].is_featured } }))}
+                                        className="w-4 h-4 accent-amber-500"
+                                      />
+                                      <span className="text-xs text-muted-foreground">Featured</span>
+                                    </label>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                              </Fragment>
                             );
                           })}
                         </TableBody>

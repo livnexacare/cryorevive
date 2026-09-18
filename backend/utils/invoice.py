@@ -56,6 +56,7 @@ SERVICES = {
     # Note: verify GST treatment of physiotherapy with the CA.
     "physiotherapy":       {"name": "Physiotherapy Session",        "sku": "CR-PT-001", "sac_code": "999312"},
     "mobile_unit":         {"name": "Mobile Recovery Unit",         "sku": "CR-MU-001", "sac_code": "999312"},
+    "kneeva":              {"name": "Kneeva Recovery Session",      "sku": "CR-KN-001", "sac_code": "999312"},
 }
 
 _ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
