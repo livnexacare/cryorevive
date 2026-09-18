@@ -25,6 +25,11 @@ class ServicePriceUpdate(BaseModel):
     price: Optional[int] = None
     duration: Optional[str] = None
     is_active: Optional[bool] = None
+    original_price: Optional[int] = None
+    discount_percent: Optional[int] = None
+    discounted_price: Optional[int] = None
+    discount_label: Optional[str] = None
+    is_featured: Optional[bool] = None
 
 
 @router.get("/pricing/services")
@@ -56,6 +61,26 @@ async def update_service_price(
     if data.is_active is not None:
         fields.append(f"is_active = ${idx}")
         values.append(data.is_active)
+        idx += 1
+    if data.original_price is not None:
+        fields.append(f"original_price = ${idx}")
+        values.append(data.original_price)
+        idx += 1
+    if data.discount_percent is not None:
+        fields.append(f"discount_percent = ${idx}")
+        values.append(data.discount_percent)
+        idx += 1
+    if data.discounted_price is not None:
+        fields.append(f"discounted_price = ${idx}")
+        values.append(data.discounted_price)
+        idx += 1
+    if data.discount_label is not None:
+        fields.append(f"discount_label = ${idx}")
+        values.append(data.discount_label)
+        idx += 1
+    if data.is_featured is not None:
+        fields.append(f"is_featured = ${idx}")
+        values.append(data.is_featured)
         idx += 1
 
     values.append(service_type)

@@ -24,6 +24,7 @@ import {
   Droplet,
   Hand,
   Stethoscope,
+  Bone,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { SERVICES, getService } from "@/lib/services";
@@ -40,6 +41,7 @@ const CENTRE_ICONS: Record<string, typeof Snowflake> = {
   cupping_therapy: Droplet,
   deep_tissue_massage: Hand,
   physiotherapy: Stethoscope,
+  kneeva: Bone,
 };
 
 interface BookingDetails {

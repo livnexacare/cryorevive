@@ -90,6 +90,15 @@ export const SERVICES: Service[] = [
     description: 'Professional physiotherapy for injury recovery, rehabilitation and performance optimization',
     serviceType: 'physiotherapy',
   },
+  {
+    id: 'kneeva',
+    name: 'Kneeva — Knee & Shoulder Recovery',
+    duration: '20 min',
+    price: 0,
+    priceDisplay: '',
+    description: 'Advanced knee & shoulder recovery wrap with massage therapy, red light therapy, and 4 therapy modes',
+    serviceType: 'kneeva',
+  },
 ]
 
 export const getService = (serviceType: string): Service | undefined =>

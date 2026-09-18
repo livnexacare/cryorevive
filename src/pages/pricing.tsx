@@ -19,9 +19,42 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     return live ? `₹${live.price.toLocaleString("en-IN")}` : fallback;
   };
 
-  const singleSessions = [
+  const getDiscount = (serviceType: string) => {
+    const live = prices.find((p) => p.service_type === serviceType && p.is_active);
+    if (!live || !live.discounted_price || live.discounted_price >= (live.original_price ?? live.price)) {
+      return null;
+    }
+    const original = live.original_price ?? live.price;
+    const percent = live.discount_percent ?? Math.round((1 - live.discounted_price / original) * 100);
+    return {
+      original: `₹${original.toLocaleString("en-IN")}`,
+      percent,
+      label: live.discount_label || null,
+      featured: !!live.is_featured,
+    };
+  };
+
+  const isFeatured = (serviceType: string): boolean => {
+    const live = prices.find((p) => p.service_type === serviceType && p.is_active);
+    return !!live?.is_featured;
+  };
+
+  const hasAnyDiscount = prices.some(
+    (p) => p.is_active && p.discounted_price && p.discounted_price < (p.original_price ?? p.price)
+  );
+
+  const singleSessions: {
+    title: string;
+    serviceType: string;
+    price: string;
+    duration: string;
+    description: string;
+    features: string[];
+    isNew?: boolean;
+  }[] = [
     {
       title: "Ice Bath Session",
+      serviceType: "ice_bath",
       price: getPrice("ice_bath", "₹899"),
       duration: "15 minutes",
       description: "Single cold plunge therapy session",
@@ -34,6 +67,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Steam Sauna Session",
+      serviceType: "steam_sauna",
       price: getPrice("steam_sauna", "₹999"),
       duration: "20 minutes",
       description: "Single high-heat sauna session",
@@ -46,6 +80,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Contrast Therapy",
+      serviceType: "contrast_therapy",
       price: getPrice("contrast_therapy", "₹1,999"),
       duration: "45 minutes",
       description: "Complete hot-cold cycle protocol",
@@ -58,6 +93,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Compression Therapy",
+      serviceType: "compression_therapy",
       price: getPrice("compression_therapy", "₹999"),
       duration: "30 minutes",
       description: "Improve circulation and reduce muscle soreness",
@@ -70,6 +106,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Full Body Recovery",
+      serviceType: "full_body_recovery",
       price: getPrice("full_body_recovery", "₹2,999"),
       duration: "60 minutes",
       description: "Complete recovery experience for your body and mind",
@@ -82,6 +119,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Cupping Therapy",
+      serviceType: "cupping_therapy",
       price: getPrice("cupping_therapy", "₹799"),
       duration: "30 minutes",
       description: "Traditional cupping therapy to release muscle tension and improve blood flow",
@@ -94,6 +132,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Deep Tissue Massage",
+      serviceType: "deep_tissue_massage",
       price: getPrice("deep_tissue_massage", "₹799"),
       duration: "45 minutes",
       description: "Deep pressure massage targeting deeper muscle layers for pain relief and recovery",
@@ -106,6 +145,7 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     },
     {
       title: "Physiotherapy",
+      serviceType: "physiotherapy",
       price: getPrice("physiotherapy", "₹1,999"),
       duration: "60 minutes",
       description: "Professional physiotherapy for injury recovery, rehabilitation and performance optimization",
@@ -115,6 +155,20 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
         "Pain management",
         "Posture correction"
       ]
+    },
+    {
+      title: "Kneeva — Knee & Shoulder Recovery",
+      serviceType: "kneeva",
+      price: getPrice("kneeva", "₹799"),
+      duration: "20 minutes",
+      description: "Recovery wrap combining massage therapy, red light therapy, and 4 customisable therapy modes for knee and shoulder pain relief",
+      features: [
+        "Massage therapy",
+        "Red light therapy",
+        "4 therapy modes",
+        "Lightweight & portable"
+      ],
+      isNew: true
     }
   ];
 
@@ -227,6 +281,26 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
           </div>
         </section>
 
+        {hasAnyDiscount && (
+          <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-4 mb-4">
+            <div className="bg-gradient-to-r from-red-600 to-orange-500 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-center sm:text-left">
+                <p className="text-white font-display font-bold text-lg sm:text-xl">
+                  🔥 Limited Time Offer
+                </p>
+                <p className="text-red-100 text-sm">
+                  Special launch prices on select sessions — book before the offer ends
+                </p>
+              </div>
+              <Link href="/booking">
+                <Button className="bg-white text-red-600 hover:bg-red-50 font-bold whitespace-nowrap">
+                  Book Now →
+                </Button>
+              </Link>
+            </div>
+          </section>
+        )}
+
         <section className="py-20 bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12">
@@ -239,12 +313,42 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
             </div>
 
             <div className="grid md:grid-cols-3 gap-8">
-              {singleSessions.map((session, index) => (
-                <Card key={index} className="bg-card border-border">
+              {singleSessions.map((session, index) => {
+                const discount = getDiscount(session.serviceType);
+                const featured = isFeatured(session.serviceType);
+                return (
+                <Card key={index} className={`relative bg-card ${featured ? "border-primary border-2" : "border-border"}`}>
+                  {(discount || featured || session.isNew) && (
+                    <div className="absolute -top-3 right-4 flex gap-2">
+                      {discount && (
+                        <Badge className="bg-red-500 text-white font-bold px-2 py-1 rounded-full">
+                          {discount.percent}% OFF
+                        </Badge>
+                      )}
+                      {featured && !discount && (
+                        <Badge className="bg-amber-500 text-white font-bold px-2 py-1 rounded-full">
+                          ⭐ Popular
+                        </Badge>
+                      )}
+                      {session.isNew && (
+                        <Badge className="bg-blue-500 text-white font-bold px-2 py-1 rounded-full">
+                          NEW
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                   <CardHeader className="space-y-4 pb-6">
                     <h3 className="text-2xl font-display font-bold">{session.title}</h3>
                     <div>
-                      <p className="text-4xl font-display font-bold text-primary">{session.price}</p>
+                      <div className="flex items-baseline gap-3">
+                        <p className="text-4xl font-display font-bold text-primary">{session.price}</p>
+                        {discount && (
+                          <p className="text-lg text-muted-foreground line-through">{discount.original}</p>
+                        )}
+                      </div>
+                      {discount?.label && (
+                        <p className="text-xs text-red-500 font-semibold mt-1">{discount.label}</p>
+                      )}
                       <p className="text-sm text-muted-foreground mt-1">{session.duration}</p>
                     </div>
                     <p className="text-muted-foreground">{session.description}</p>
@@ -265,7 +369,8 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
                     </Link>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

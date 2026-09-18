@@ -133,7 +133,7 @@ const MEMBERSHIP_PACKAGE_NAMES: Record<string, string> = {
 // How many package sessions each service consumes (mirrors the backend).
 const SESSION_WEIGHTS: Record<string, number> = {
   ice_bath: 1, steam_sauna: 1, compression_therapy: 1, deep_tissue_massage: 1,
-  cupping_therapy: 1, cryo_chamber: 1, mobile_unit: 1,
+  cupping_therapy: 1, cryo_chamber: 1, mobile_unit: 1, kneeva: 1,
   contrast_therapy: 2, physiotherapy: 2,
   full_body_recovery: 4,
 };

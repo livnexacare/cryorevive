@@ -5,6 +5,11 @@ export interface ServicePrice {
   duration: string
   price: number
   is_active: boolean
+  original_price?: number | null
+  discount_percent?: number | null
+  discounted_price?: number | null
+  discount_label?: string | null
+  is_featured?: boolean | null
 }
 
 const API_URL =

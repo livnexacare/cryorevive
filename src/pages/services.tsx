@@ -4,7 +4,7 @@ import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SEO } from "@/components/SEO";
 import { Button } from "@/components/ui/button";
-import { Snowflake, Droplets, Repeat, Truck, Activity, Sparkles, Clock, Thermometer, CheckCircle, Droplet, Hand, Stethoscope } from "lucide-react";
+import { Snowflake, Droplets, Repeat, Truck, Activity, Sparkles, Clock, Thermometer, CheckCircle, Droplet, Hand, Stethoscope, Bone } from "lucide-react";
 import Link from "next/link";
 
 const COLOR_STYLES: Record<string, { border: string; button: string }> = {
@@ -13,6 +13,7 @@ const COLOR_STYLES: Record<string, { border: string; button: string }> = {
   "text-orange-400": { border: "border-orange-500/30", button: "bg-orange-500 hover:bg-orange-600 text-white" },
   "text-blue-400": { border: "border-blue-500/30", button: "bg-blue-500 hover:bg-blue-600 text-white" },
   "text-green-400": { border: "border-green-500/30", button: "bg-green-500 hover:bg-green-600 text-white" },
+  "text-indigo-400": { border: "border-indigo-500/30", button: "bg-indigo-500 hover:bg-indigo-600 text-white" },
 };
 
 export default function Services() {
@@ -181,6 +182,27 @@ export default function Services() {
       ],
       image: "/physiotherapy.png",
       imageSide: "right" as const,
+    },
+    {
+      icon: Bone,
+      title: "Kneeva",
+      tagline: "Knee & Shoulder Recovery Wrap",
+      description: "Advanced recovery wrap combining massage therapy, red light therapy, and 4 customisable therapy modes — for targeted knee and shoulder pain relief and recovery.",
+      statLabel: "Modes",
+      statValue: "4 Therapy Modes",
+      duration: "20 minutes",
+      color: "text-indigo-400",
+      bgColor: "bg-indigo-500/10",
+      serviceType: "kneeva",
+      benefits: [
+        "Massage therapy — eases muscle tension",
+        "Red light therapy — supports healing & circulation",
+        "4 therapy modes — customise your recovery",
+        "Lightweight & portable — recovery anywhere",
+        "Targeted for knee and shoulder pain"
+      ],
+      image: "/kneeva.png",
+      imageSide: "left" as const,
     },
     {
       icon: Truck,
