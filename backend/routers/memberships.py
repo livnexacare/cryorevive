@@ -4,7 +4,12 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from database import db_execute, db_fetch, db_fetchrow, row_to_dict, rows_to_list
-from models.memberships import MembershipCreate, MembershipUpdate, SessionUse
+from models.memberships import (
+    MembershipCreate,
+    MembershipPlanUpdate,
+    MembershipUpdate,
+    SessionUse,
+)
 
 router = APIRouter(prefix="/api", tags=["memberships"])
 
@@ -213,3 +218,40 @@ async def get_session_history(
         membership_id,
     )
     return rows_to_list(rows)
+
+
+# ── Membership plans (public pricing) ───────────────────────────────────────
+
+@router.get("/membership-plans")
+async def get_membership_plans():
+    """Public endpoint — active monthly membership plans, cheapest first."""
+    rows = await db_fetch(
+        "SELECT * FROM membership_plans WHERE is_active = true ORDER BY price ASC"
+    )
+    return rows_to_list(rows)
+
+
+@router.patch("/membership-plans/{plan_type}")
+async def update_membership_plan(
+    plan_type: str,
+    data: MembershipPlanUpdate,
+    x_admin_key: str = Header(default="", alias="X-Admin-Key"),
+):
+    _require_admin(x_admin_key)
+
+    updates = {k: v for k, v in data.dict().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    fields = [f"{k} = ${i + 1}" for i, k in enumerate(updates.keys())]
+    values = list(updates.values())
+    values.append(plan_type)
+
+    await db_execute(
+        f"UPDATE membership_plans SET {', '.join(fields)}, updated_at = NOW() WHERE plan_type = ${len(values)}",
+        *values,
+    )
+    row = await db_fetchrow("SELECT * FROM membership_plans WHERE plan_type = $1", plan_type)
+    if not row:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return row_to_dict(row)
