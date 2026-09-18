@@ -140,6 +140,18 @@ interface ServicePrice {
   is_featured?: boolean | null;
 }
 
+interface MembershipPlan {
+  id: string;
+  plan_type: string;
+  name: string;
+  sessions_per_month: number;
+  price: number;
+  original_price?: number | null;
+  is_active: boolean;
+  is_featured: boolean;
+  updated_at: string;
+}
+
 interface EventPricing {
   id: string;
   name: string;
@@ -452,6 +464,14 @@ export default function AdminDashboard() {
   }>>({});
   const [priceSaving, setPriceSaving] = useState<string | null>(null);
   const [priceSaveResult, setPriceSaveResult] = useState<Record<string, string>>({});
+  const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planEdits, setPlanEdits] = useState<Record<string, {
+    name: string; sessions_per_month: string; price: string;
+    original_price: string; is_featured: boolean;
+  }>>({});
+  const [planSaving, setPlanSaving] = useState<string | null>(null);
+  const [planSaveResult, setPlanSaveResult] = useState<Record<string, string>>({});
   const [eventTiers, setEventTiers] = useState<EventPricing[]>([]);
   const [tiersLoading, setTiersLoading] = useState(false);
   const [tiersTick, setTiersTick] = useState(0);
@@ -621,6 +641,34 @@ export default function AdminDashboard() {
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setPriceLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAuthenticated, activeTab]);
+
+  // ── Fetch membership plans ──────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== "pricing") return;
+    let cancelled = false;
+    setPlanLoading(true);
+    fetch(`${API_URL}/api/membership-plans`)
+      .then(r => r.json())
+      .then((data: MembershipPlan[]) => {
+        if (cancelled) return;
+        setMembershipPlans(data);
+        const edits: typeof planEdits = {};
+        data.forEach(p => {
+          edits[p.plan_type] = {
+            name: p.name,
+            sessions_per_month: String(p.sessions_per_month),
+            price: String(p.price),
+            original_price: String(p.original_price ?? p.price),
+            is_featured: !!p.is_featured,
+          };
+        });
+        setPlanEdits(edits);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setPlanLoading(false); });
     return () => { cancelled = true; };
   }, [isAuthenticated, activeTab]);
 
@@ -1429,6 +1477,31 @@ No B2B transactions this period
     } catch {
       setPriceSaveResult(r => ({ ...r, [serviceType]: "error" }));
     } finally { setPriceSaving(null); }
+  };
+
+  const savePlan = async (planType: string) => {
+    const edit = planEdits[planType];
+    if (!edit) return;
+    setPlanSaving(planType);
+    setPlanSaveResult(r => ({ ...r, [planType]: "" }));
+    try {
+      const res = await fetch(`${API_URL}/api/membership-plans/${planType}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": ADMIN_KEY },
+        body: JSON.stringify({
+          name: edit.name,
+          sessions_per_month: parseInt(edit.sessions_per_month) || 0,
+          price: parseInt(edit.price) || 0,
+          original_price: parseInt(edit.original_price) || parseInt(edit.price) || 0,
+          is_featured: edit.is_featured,
+        }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      setPlanSaveResult(r => ({ ...r, [planType]: "saved" }));
+      setTimeout(() => setPlanSaveResult(r => ({ ...r, [planType]: "" })), 3000);
+    } catch {
+      setPlanSaveResult(r => ({ ...r, [planType]: "error" }));
+    } finally { setPlanSaving(null); }
   };
 
   const deleteTier = async (id: string) => {
@@ -2735,6 +2808,94 @@ cryorevive.in | +91 08595850920`;
                           })}
                         </TableBody>
                       </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Section A2: Membership Plans */}
+              <Card>
+                <CardHeader><CardTitle>Monthly Membership Prices</CardTitle></CardHeader>
+                <CardContent>
+                  {planLoading ? (
+                    <div className="py-8 text-center text-muted-foreground">Loading plans...</div>
+                  ) : membershipPlans.length === 0 ? (
+                    <div className="py-8 text-center text-muted-foreground">
+                      No membership plans found. Run the membership_plans migration in Supabase.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {membershipPlans.map(plan => {
+                        const edit = planEdits[plan.plan_type];
+                        if (!edit) return null;
+                        const result = planSaveResult[plan.plan_type];
+                        const orig = parseInt(edit.original_price) || 0;
+                        const price = parseInt(edit.price) || 0;
+                        const saved = orig - price;
+                        return (
+                          <div key={plan.plan_type} className="rounded-lg border border-border p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <p className="font-semibold capitalize">{plan.name}</p>
+                                <p className="text-xs text-muted-foreground">{plan.sessions_per_month} sessions/month</p>
+                              </div>
+                              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={edit.is_featured}
+                                  onChange={() => setPlanEdits(p => ({ ...p, [plan.plan_type]: { ...p[plan.plan_type], is_featured: !p[plan.plan_type].is_featured } }))}
+                                  className="w-4 h-4 accent-primary"
+                                />
+                                Featured
+                              </label>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Original Price (₹)</label>
+                                <Input
+                                  type="number" min={0}
+                                  value={edit.original_price}
+                                  onChange={e => setPlanEdits(p => ({ ...p, [plan.plan_type]: { ...p[plan.plan_type], original_price: e.target.value } }))}
+                                  className="h-9 text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Selling Price (₹)</label>
+                                <Input
+                                  type="number" min={0}
+                                  value={edit.price}
+                                  onChange={e => setPlanEdits(p => ({ ...p, [plan.plan_type]: { ...p[plan.plan_type], price: e.target.value } }))}
+                                  className="h-9 text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Sessions/Month</label>
+                                <Input
+                                  type="number" min={0}
+                                  value={edit.sessions_per_month}
+                                  onChange={e => setPlanEdits(p => ({ ...p, [plan.plan_type]: { ...p[plan.plan_type], sessions_per_month: e.target.value } }))}
+                                  className="h-9 text-sm"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg bg-muted/40 px-3 py-2 mb-3 text-xs flex justify-between">
+                              <span className="text-muted-foreground">Customer saves:</span>
+                              <span className="text-green-600 font-bold">₹{Math.max(0, saved).toLocaleString("en-IN")}/month</span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" disabled={planSaving === plan.plan_type} onClick={() => savePlan(plan.plan_type)} className="flex items-center gap-1.5 h-8">
+                                {planSaving === plan.plan_type && <Spinner className="h-3 w-3" />}
+                                Save {plan.name} Plan
+                              </Button>
+                              {result === "saved" && <span className="text-xs text-green-600 font-medium">Saved ✓</span>}
+                              {result === "error" && <span className="text-xs text-destructive font-medium">Error</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>

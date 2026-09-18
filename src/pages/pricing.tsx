@@ -4,16 +4,72 @@ import { SEO } from "@/components/SEO";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Zap, Trophy, Users } from "lucide-react";
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { fetchLivePrices, type ServicePrice } from "@/lib/pricing";
 
-export async function getServerSideProps() {
-  const prices = await fetchLivePrices();
-  return { props: { prices } };
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://cryorevive.onrender.com";
+const ADMIN_WA = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP ?? "918595850920";
+
+export interface MembershipPlan {
+  plan_type: string;
+  name: string;
+  sessions_per_month: number;
+  price: number;
+  original_price?: number | null;
+  is_active: boolean;
+  is_featured: boolean;
 }
 
-export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
+const FALLBACK_PLANS: MembershipPlan[] = [
+  { plan_type: "starter", name: "Starter", sessions_per_month: 8, price: 5999, original_price: 14999, is_active: true, is_featured: false },
+  { plan_type: "athlete", name: "Athlete", sessions_per_month: 16, price: 9999, original_price: 24999, is_active: true, is_featured: true },
+  { plan_type: "elite", name: "Elite", sessions_per_month: 30, price: 15999, original_price: 39999, is_active: true, is_featured: false },
+];
+
+const PLAN_BORDER_COLORS: Record<string, string> = {
+  starter: "border-green-500/40",
+  athlete: "border-cyan-500/60",
+  elite: "border-purple-500/40",
+};
+
+export async function getServerSideProps() {
+  const [prices, plans] = await Promise.all([
+    fetchLivePrices(),
+    fetch(`${API_URL}/api/membership-plans`)
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => []) as Promise<MembershipPlan[]>,
+  ]);
+  return { props: { prices, plans } };
+}
+
+const SERVICE_IMAGES: Record<string, string> = {
+  ice_bath: "/ice-bath-therapy.png",
+  steam_sauna: "/steam-sauna.png",
+  contrast_therapy: "/contrast-therapy.png",
+  compression_therapy: "/compression-therapy.png",
+  deep_tissue_massage: "/deep-tissue-therapy.png",
+  cupping_therapy: "/cupping-thrapy.png",
+  physiotherapy: "/physiotherapy.png",
+  full_body_recovery: "/full-body.png",
+  kneeva: "/kneeva.png",
+};
+
+const SERVICE_GRADIENTS: Record<string, string> = {
+  ice_bath: "from-blue-900 to-cyan-800",
+  steam_sauna: "from-orange-900 to-amber-800",
+  contrast_therapy: "from-cyan-900 to-blue-800",
+  compression_therapy: "from-purple-900 to-violet-800",
+  deep_tissue_massage: "from-green-900 to-emerald-800",
+  cupping_therapy: "from-red-900 to-orange-800",
+  physiotherapy: "from-teal-900 to-cyan-800",
+  full_body_recovery: "from-blue-900 to-cyan-700",
+  kneeva: "from-blue-900 to-indigo-800",
+};
+
+export default function Pricing({ prices = [], plans = [] }: { prices: ServicePrice[]; plans: MembershipPlan[] }) {
+  const membershipPlans = plans.length > 0 ? plans : FALLBACK_PLANS;
+
   const getPrice = (serviceType: string, fallback: string): string => {
     const live = prices.find((p) => p.service_type === serviceType && p.is_active);
     return live ? `₹${live.price.toLocaleString("en-IN")}` : fallback;
@@ -172,60 +228,6 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
     }
   ];
 
-  const memberships = [
-    {
-      name: "Starter",
-      icon: Zap,
-      price: "₹5,999",
-      period: "/month",
-      description: "Perfect for getting started with recovery therapy",
-      features: [
-        "8 sessions per month",
-        "Ice bath or sauna access",
-        "Flexible scheduling",
-        "10% retail discount",
-        "Mobile app access"
-      ],
-      popular: false,
-      color: "border-border"
-    },
-    {
-      name: "Athlete",
-      icon: Trophy,
-      price: "₹9,999",
-      period: "/month",
-      description: "Designed for serious athletes in training",
-      features: [
-        "16 sessions per month",
-        "Ice bath + sauna access",
-        "Priority booking",
-        "15% retail discount",
-        "Recovery tracking app",
-        "Guest pass (2/month)"
-      ],
-      popular: true,
-      color: "border-primary"
-    },
-    {
-      name: "Elite",
-      icon: Users,
-      price: "₹15,999",
-      period: "/month",
-      description: "Ultimate recovery for peak performers",
-      features: [
-        "Unlimited sessions",
-        "All recovery modalities",
-        "Anytime access (6 AM - 10 PM)",
-        "20% retail discount",
-        "Personal recovery plan",
-        "Guest passes (4/month)",
-        "Mobile unit priority"
-      ],
-      popular: false,
-      color: "border-accent"
-    }
-  ];
-
   const athletePackages = [
     {
       title: "Team Recovery Package",
@@ -302,75 +304,96 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
         )}
 
         <section className="py-20 bg-background">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl sm:text-4xl font-display font-bold mb-4">
-                Single Sessions
-              </h2>
-              <p className="text-muted-foreground">
-                Pay per session — perfect for trying our services
-              </p>
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-end justify-between mb-8 flex-wrap gap-3">
+              <div>
+                <h2 className="text-3xl sm:text-4xl font-display font-bold">
+                  Single Sessions
+                </h2>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Pay per visit — no commitment
+                </p>
+              </div>
+              {hasAnyDiscount && (
+                <span className="text-red-500 text-sm font-bold animate-pulse">
+                  🔥 Launch Offers Active
+                </span>
+              )}
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {singleSessions.map((session, index) => {
                 const discount = getDiscount(session.serviceType);
                 const featured = isFeatured(session.serviceType);
+                const gradient = SERVICE_GRADIENTS[session.serviceType] ?? "from-gray-800 to-gray-700";
+                const imgSrc = SERVICE_IMAGES[session.serviceType];
                 return (
-                <Card key={index} className={`relative bg-card ${featured ? "border-primary border-2" : "border-border"}`}>
-                  {(discount || featured || session.isNew) && (
-                    <div className="absolute -top-3 right-4 flex gap-2">
-                      {discount && (
-                        <Badge className="bg-red-500 text-white font-bold px-2 py-1 rounded-full">
-                          {discount.percent}% OFF
-                        </Badge>
-                      )}
-                      {featured && !discount && (
-                        <Badge className="bg-amber-500 text-white font-bold px-2 py-1 rounded-full">
-                          ⭐ Popular
-                        </Badge>
-                      )}
-                      {session.isNew && (
-                        <Badge className="bg-blue-500 text-white font-bold px-2 py-1 rounded-full">
-                          NEW
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                  <CardHeader className="space-y-4 pb-6">
-                    <h3 className="text-2xl font-display font-bold">{session.title}</h3>
-                    <div>
-                      <div className="flex items-baseline gap-3">
-                        <p className="text-4xl font-display font-bold text-primary">{session.price}</p>
-                        {discount && (
-                          <p className="text-lg text-muted-foreground line-through">{discount.original}</p>
-                        )}
+                  <Link
+                    key={index}
+                    href={`/booking?service=${session.serviceType}`}
+                    className="group relative bg-card rounded-2xl overflow-hidden border border-border hover:border-primary/50 transition-all hover:scale-[1.02] hover:shadow-xl block"
+                  >
+                    {discount && (
+                      <div className="absolute top-2 right-2 z-10 bg-red-500 text-white text-xs font-black px-2 py-0.5 rounded-full shadow-lg">
+                        {discount.percent}% OFF
                       </div>
-                      {discount?.label && (
-                        <p className="text-xs text-red-500 font-semibold mt-1">{discount.label}</p>
+                    )}
+                    {featured && !discount && (
+                      <div className="absolute top-2 left-2 z-10 bg-amber-500 text-white text-xs font-black px-2 py-0.5 rounded-full">
+                        ⭐ Popular
+                      </div>
+                    )}
+                    {session.isNew && (
+                      <div className="absolute top-2 left-2 z-10 bg-blue-500 text-white text-xs font-black px-2 py-0.5 rounded-full">
+                        NEW
+                      </div>
+                    )}
+
+                    <div className={`relative h-44 bg-gradient-to-br ${gradient}`}>
+                      {imgSrc && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={imgSrc}
+                          alt={session.title}
+                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
                       )}
-                      <p className="text-sm text-muted-foreground mt-1">{session.duration}</p>
+                      <div className="absolute inset-0 bg-gradient-to-t from-card via-card/10 to-transparent" />
                     </div>
-                    <p className="text-muted-foreground">{session.description}</p>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <ul className="space-y-3">
-                      {session.features.map((feature, i) => (
-                        <li key={i} className="flex items-start space-x-3">
-                          <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                          <span className="text-sm text-muted-foreground">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Link href="/booking" className="block">
-                      <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
-                        Book Now
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
+
+                    <div className="p-4">
+                      <h3 className="font-bold text-sm leading-tight mb-1">{session.title}</h3>
+                      <p className="text-muted-foreground text-xs mb-3">{session.duration}</p>
+
+                      <div className="flex items-end justify-between">
+                        <div>
+                          <p className="font-black text-xl text-primary">{session.price}</p>
+                          {discount && (
+                            <p className="text-muted-foreground text-xs line-through">{discount.original}</p>
+                          )}
+                          {discount?.label && (
+                            <p className="text-red-500 text-xs font-bold">{discount.label}</p>
+                          )}
+                        </div>
+                        <div className="w-8 h-8 bg-primary group-hover:bg-primary/90 rounded-full flex items-center justify-center transition-colors flex-shrink-0">
+                          <span className="text-primary-foreground text-sm">→</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
                 );
               })}
+            </div>
+
+            <div className="mt-10 text-center">
+              <Link href="/booking">
+                <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold">
+                  Book Any Session →
+                </Button>
+              </Link>
             </div>
           </div>
         </section>
@@ -387,14 +410,15 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
             </div>
 
             <div className="grid md:grid-cols-3 gap-8">
-              {memberships.map((plan, index) => {
-                const Icon = plan.icon;
+              {membershipPlans.map((plan) => {
+                const original = plan.original_price ?? plan.price;
+                const saved = original - plan.price;
                 return (
-                  <Card 
-                    key={index} 
-                    className={`bg-background ${plan.color} ${plan.popular ? 'border-2 relative' : ''}`}
+                  <Card
+                    key={plan.plan_type}
+                    className={`relative bg-background ${PLAN_BORDER_COLORS[plan.plan_type] ?? "border-border"} ${plan.is_featured ? "border-2" : ""}`}
                   >
-                    {plan.popular && (
+                    {plan.is_featured && (
                       <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                         <Badge className="bg-primary text-primary-foreground font-semibold px-4 py-1">
                           Most Popular
@@ -402,38 +426,42 @@ export default function Pricing({ prices = [] }: { prices: ServicePrice[] }) {
                       </div>
                     )}
                     <CardHeader className="space-y-4 pb-6">
-                      <div className={`${plan.popular ? 'bg-primary/10' : 'bg-muted'} w-14 h-14 rounded-sm flex items-center justify-center`}>
-                        <Icon className={`h-7 w-7 ${plan.popular ? 'text-primary' : 'text-foreground'}`} />
-                      </div>
-                      <h3 className="text-2xl font-display font-bold">{plan.name}</h3>
+                      <h3 className="text-2xl font-display font-bold uppercase">{plan.name}</h3>
+                      <p className="text-muted-foreground text-sm">{plan.sessions_per_month} sessions / month</p>
                       <div>
                         <div className="flex items-baseline">
-                          <p className="text-4xl font-display font-bold">{plan.price}</p>
-                          <p className="text-muted-foreground ml-2">{plan.period}</p>
+                          <p className="text-4xl font-display font-bold">₹{plan.price.toLocaleString("en-IN")}</p>
+                          <p className="text-muted-foreground ml-2">/month</p>
                         </div>
+                        {original > plan.price && (
+                          <>
+                            <p className="text-muted-foreground text-sm line-through">₹{original.toLocaleString("en-IN")}</p>
+                            {saved > 0 && (
+                              <p className="text-green-600 text-xs font-bold">Save ₹{saved.toLocaleString("en-IN")}/month</p>
+                            )}
+                          </>
+                        )}
                       </div>
-                      <p className="text-muted-foreground">{plan.description}</p>
                     </CardHeader>
-                    <CardContent className="space-y-6">
-                      <ul className="space-y-3">
-                        {plan.features.map((feature, i) => (
-                          <li key={i} className="flex items-start space-x-3">
-                            <Check className={`h-5 w-5 ${plan.popular ? 'text-primary' : 'text-accent'} flex-shrink-0 mt-0.5`} />
-                            <span className="text-sm text-muted-foreground">{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <Link href="/booking" className="block">
-                        <Button 
+                    <CardContent>
+                      <a
+                        href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent(
+                          `Hi! I want the ${plan.name} membership (${plan.sessions_per_month} sessions/month) at CryoRevive.`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block"
+                      >
+                        <Button
                           className={`w-full font-semibold ${
-                            plan.popular 
-                              ? 'bg-primary hover:bg-primary/90 text-primary-foreground' 
-                              : 'bg-accent hover:bg-accent/90 text-accent-foreground'
+                            plan.is_featured
+                              ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                              : "bg-accent hover:bg-accent/90 text-accent-foreground"
                           }`}
                         >
-                          Start {plan.name}
+                          Get {plan.name} Plan
                         </Button>
-                      </Link>
+                      </a>
                     </CardContent>
                   </Card>
                 );

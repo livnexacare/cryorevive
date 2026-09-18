@@ -33,3 +33,12 @@ class SessionUse(BaseModel):
     booking_id: Optional[str] = None
     staff_name: Optional[str] = None
     notes: Optional[str] = None
+
+
+class MembershipPlanUpdate(BaseModel):
+    name: Optional[str] = None
+    sessions_per_month: Optional[int] = None
+    price: Optional[int] = None
+    original_price: Optional[int] = None
+    is_active: Optional[bool] = None
+    is_featured: Optional[bool] = None
