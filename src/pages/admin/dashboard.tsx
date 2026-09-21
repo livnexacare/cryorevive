@@ -1105,6 +1105,34 @@ export default function AdminDashboard() {
     window.URL.revokeObjectURL(url);
   };
 
+  // ── Data backup (via admin-key-protected backend endpoint) ──────────────
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupError, setBackupError] = useState("");
+
+  const handleBackup = async (table?: string) => {
+    setBackupBusy(true);
+    setBackupError("");
+    try {
+      const qs = table ? `?table=${encodeURIComponent(table)}` : "";
+      const res = await fetch(`${API_URL}/api/admin/backup${qs}`, { headers: { "X-Admin-Key": ADMIN_KEY } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const date = new Date().toISOString().split("T")[0];
+      const payload = table ? data.tables[table] : data;
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = table ? `cryorevive-${table}-${date}.json` : `cryorevive-full-backup-${date}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setBackupError(`Failed to export ${table ?? "full backup"}. Try again.`);
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
   const handleExportInvoiceList = () => {
     const [year, month] = expenseMonth.split("-").map(Number);
     const monthBookings = revenueBookings.filter(b => {
@@ -2378,6 +2406,34 @@ cryorevive.in | +91 08595850920`;
                 over the 200 most recent bookings. Expense totals, profit/loss and the list above cover the
                 selected month; the 6-month chart always ends at the current month.
               </p>
+
+              {/* Data Backup */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">💾 Data Backup</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground text-xs mb-4">
+                    Download your data as JSON. Staff password hashes are never included.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { table: "bookings", label: "📋 Export Bookings" },
+                      { table: "memberships", label: "🎫 Export Members" },
+                      { table: "clients", label: "👥 Export Clients" },
+                      { table: "expenses", label: "💸 Export Expenses" },
+                    ].map(b => (
+                      <Button key={b.table} variant="outline" size="sm" disabled={backupBusy} onClick={() => handleBackup(b.table)}>
+                        {b.label}
+                      </Button>
+                    ))}
+                    <Button className="col-span-2" disabled={backupBusy} onClick={() => handleBackup()}>
+                      {backupBusy ? "Exporting…" : "💾 Full Backup (All Tables)"}
+                    </Button>
+                  </div>
+                  {backupError && <p className="text-red-600 text-xs mt-3">{backupError}</p>}
+                </CardContent>
+              </Card>
             </div>
           )}
 

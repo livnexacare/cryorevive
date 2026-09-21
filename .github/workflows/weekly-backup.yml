@@ -1,0 +1,63 @@
+name: Weekly Data Backup
+
+on:
+  schedule:
+    - cron: '30 20 * * 6'  # Saturday 20:30 UTC = Sunday 02:00 IST
+  workflow_dispatch:        # Manual trigger anytime
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+    steps:
+      - name: Export all tables from Supabase
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          DATE=$(date -u +%Y-%m-%d)
+          PAGE=1000  # PostgREST default max rows per request
+
+          # table:columns (staff_accounts excludes password_hash)
+          TABLES=(
+            "bookings:*" "clients:*" "memberships:*" "membership_sessions:*"
+            "staff_accounts:id,username,full_name,role,is_active,last_login,created_at"
+            "staff_payroll:*" "staff_attendance:*" "expenses:*" "coupons:*"
+            "service_pricing:*" "event_pricing:*" "membership_plans:*"
+            "custom_slots:*" "announcements:*"
+          )
+
+          echo "=== CryoRevive Backup Summary ===" > backup/SUMMARY.txt
+          echo "Date: $DATE" >> backup/SUMMARY.txt
+
+          for ENTRY in "${TABLES[@]}"; do
+            TABLE="${ENTRY%%:*}"; COLS="${ENTRY#*:}"
+            OUT="backup/${TABLE}_${DATE}.json"
+            echo "[]" > "$OUT"
+            OFFSET=0
+            while :; do
+              curl -sSf "$SUPABASE_URL/rest/v1/${TABLE}?select=${COLS}" \
+                -H "apikey: $SUPABASE_SERVICE_KEY" \
+                -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+                -H "Range-Unit: items" -H "Range: ${OFFSET}-$((OFFSET + PAGE - 1))" \
+                > chunk.json
+              jq -s '.[0] + .[1]' "$OUT" chunk.json > merged.json && mv merged.json "$OUT"
+              [ "$(jq length chunk.json)" -lt "$PAGE" ] && break
+              OFFSET=$((OFFSET + PAGE))
+            done
+            echo "${TABLE}: $(jq length "$OUT") records" | tee -a backup/SUMMARY.txt
+          done
+          rm -f chunk.json
+          cat backup/SUMMARY.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload backup as GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cryorevive-backup-${{ github.run_id }}
+          path: backup/
+          retention-days: 90
