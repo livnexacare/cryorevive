@@ -1024,6 +1024,78 @@ export default function AdminDashboard() {
     }
   };
 
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const handleSendInvoice = async (bookingId: string, clientName: string) => {
+    const confirmed = window.confirm(
+      `Send invoice to ${clientName} via WhatsApp + Email?`
+    );
+    if (!confirmed) return;
+
+    setSendingInvoiceId(bookingId);
+    try {
+      const res = await fetch(`${API_URL}/api/automation/send-invoice`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Key": ADMIN_KEY,
+        },
+        body: JSON.stringify({
+          booking_id: bookingId,
+          send_whatsapp: true,
+          send_email: true,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(
+          `✅ Invoice sent!\n` +
+          `WhatsApp: ${data.whatsapp || "N/A"}\n` +
+          `Email: ${data.email || "N/A"}\n` +
+          `Invoice: ${data.invoice_no}`
+        );
+      } else {
+        alert(`Failed: ${data.detail}`);
+      }
+    } catch {
+      alert("Network error — try again");
+    } finally {
+      setSendingInvoiceId(null);
+    }
+  };
+
+  // Bulk reminder send — sweeps every active membership server-side
+  // (low sessions / near expiry always, everyone else only on Sundays).
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const handleSendMemberReminders = async () => {
+    const confirmed = window.confirm(
+      "Send WhatsApp reminders to all active members now?"
+    );
+    if (!confirmed) return;
+
+    setSendingReminders(true);
+    try {
+      const res = await fetch(`${API_URL}/api/automation/send-member-reminders`, {
+        method: "POST",
+        headers: { "X-Admin-Key": ADMIN_KEY },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(
+          `✅ Reminders sent!\n` +
+          `Sent: ${data.sent?.length || 0}\n` +
+          `Skipped: ${data.skipped?.length || 0}\n` +
+          `Failed: ${data.failed?.length || 0}`
+        );
+      } else {
+        alert(`Failed: ${data.detail}`);
+      }
+    } catch {
+      alert("Network error — try again");
+    } finally {
+      setSendingReminders(false);
+    }
+  };
+
   // Place of supply is fixed: the studio is the only place of business and
   // every customer is served there, so all sales are intra-state UP (09).
   const COMPANY_GSTIN = "09AAGCL7757C1Z9";
@@ -2015,13 +2087,25 @@ cryorevive.in | +91 08595850920`;
                             )}
                           </div>
                           {(b.payment_status === "paid" || b.payment_status === "partial") && (
-                            <button
-                              onClick={() => handleDownloadInvoice(b.id, b.name)}
-                              className="mt-2 w-full px-2 py-1.5 text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/20 rounded-lg transition-colors flex items-center justify-center gap-1 whitespace-nowrap"
-                              title="Download GST Invoice"
-                            >
-                              🧾 Invoice
-                            </button>
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                onClick={() => handleDownloadInvoice(b.id, b.name)}
+                                className="flex-1 px-2 py-1.5 text-xs bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/20 rounded-lg transition-colors flex items-center justify-center gap-1 whitespace-nowrap"
+                                title="Download GST Invoice"
+                              >
+                                🧾 Invoice
+                              </button>
+                              {b.amount > 0 && (
+                                <button
+                                  onClick={() => handleSendInvoice(b.id, b.name)}
+                                  disabled={sendingInvoiceId === b.id}
+                                  className="flex-1 px-2 py-1.5 text-xs bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 border border-blue-500/20 rounded-lg transition-colors flex items-center justify-center gap-1 whitespace-nowrap disabled:opacity-50"
+                                  title="Send invoice via WhatsApp + Email"
+                                >
+                                  {sendingInvoiceId === b.id ? <Spinner className="h-3 w-3" /> : "📤 Send"}
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       ))}
@@ -2106,6 +2190,16 @@ cryorevive.in | +91 08595850920`;
                                         title="Download GST Invoice"
                                       >
                                         🧾 Invoice
+                                      </button>
+                                    )}
+                                    {(b.payment_status === "paid" || b.payment_status === "partial") && b.amount > 0 && (
+                                      <button
+                                        onClick={() => handleSendInvoice(b.id, b.name)}
+                                        disabled={sendingInvoiceId === b.id}
+                                        className="px-2 py-1.5 text-xs bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 border border-blue-500/20 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap disabled:opacity-50"
+                                        title="Send invoice via WhatsApp + Email"
+                                      >
+                                        {sendingInvoiceId === b.id ? <Spinner className="h-3 w-3" /> : "📤 Send"}
                                       </button>
                                     )}
                                   </div>
@@ -3816,11 +3910,23 @@ cryorevive.in | +91 08595850920`;
               </div>
 
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                   <CardTitle>Memberships</CardTitle>
-                  <Button size="sm" variant="outline" onClick={() => setShowAddMembership(v => !v)}>
-                    {showAddMembership ? "Cancel" : "+ Add Membership"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-purple-600/20 text-purple-300 border-purple-500/30 hover:bg-purple-600/30"
+                      disabled={sendingReminders}
+                      onClick={handleSendMemberReminders}
+                    >
+                      {sendingReminders ? <Spinner className="h-3.5 w-3.5 mr-1.5" /> : null}
+                      📣 Send Reminders to All Members
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowAddMembership(v => !v)}>
+                      {showAddMembership ? "Cancel" : "+ Add Membership"}
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {showAddMembership && (
