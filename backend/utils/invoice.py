@@ -41,6 +41,13 @@ COMPANY = {
     "sac_code": "999312",
     "gst_rate": 18,
     "signatory": "Ankit Singh",
+    # Place of supply: state code first, the way the CA wants to read it.
+    # Supplier and customer are both in UP, so every sale is intra-state
+    # and splits into CGST + SGST (never IGST).
+    "place_of_supply": "09 - Uttar Pradesh",
+    "place_of_supply_full": "09 - Uttar Pradesh (Greater Noida)",
+    "studio_address": "C-168, Omnicron 1, Mathurapur, Greater Noida",
+    "supply_type": "Intra-State",
 }
 
 # ── Service catalogue with SKUs ───────────────────────────────────────────
@@ -248,7 +255,7 @@ def generate_invoice_pdf(booking: dict, invoice_number: str) -> bytes:
         ("Invoice Date", today, False),
         ("Due Date", today, False),
         ("Payment Terms", "Due on Receipt", False),
-        ("Place of Supply", "Uttar Pradesh (09)", False),
+        ("Place of Supply", COMPANY["place_of_supply"], False),
     ]
     for i, (label, value, hl) in enumerate(inv_rows):
         ry = 54 + i * 6
@@ -261,7 +268,7 @@ def generate_invoice_pdf(booking: dict, invoice_number: str) -> bytes:
     y = 96.0
     half_w = (content_w - 4) / 2
 
-    p.box(M, y, half_w, 36, fill="#eff6ff", stroke="#93c5fd", lw=0.3)
+    p.box(M, y, half_w, 40, fill="#eff6ff", stroke="#93c5fd", lw=0.3)
     p.text(M + 3, y + 6, "BILL TO", size=8, bold=True, color="#2563eb")
     p.text(M + 3, y + 13, booking.get("name") or "", size=10, bold=True, color="#0f172a")
     cy = y + 19
@@ -276,7 +283,7 @@ def generate_invoice_pdf(booking: dict, invoice_number: str) -> bytes:
         p.text(M + 3, cy, notes[:40], size=8, color="#475569")
 
     gst_x = M + half_w + 4
-    p.box(gst_x, y, half_w, 36, fill="#eff6ff", stroke="#93c5fd", lw=0.3)
+    p.box(gst_x, y, half_w, 40, fill="#eff6ff", stroke="#93c5fd", lw=0.3)
     p.text(gst_x + 3, y + 6, "GST DETAILS (SUPPLIER)", size=8, bold=True, color="#2563eb")
     gst_rows = [
         ("Company Name", COMPANY["name"]),
@@ -285,10 +292,15 @@ def generate_invoice_pdf(booking: dict, invoice_number: str) -> bytes:
         ("Address", COMPANY["address"]),
     ]
     for i, (label, value) in enumerate(gst_rows):
-        gy = y + 13 + i * 6
+        gy = y + 12 + i * 5
         p.text(gst_x + 3, gy, f"{label} :", size=8, color="#64748b")
         disp = value if len(value) <= 22 else value[:22] + "..."
         p.text(gst_x + 32, gy, disp, size=8, bold=(i == 2), color="#0f172a")
+
+    p.text(gst_x + 3, y + 30.5, "PLACE OF SUPPLY", size=8, bold=True, color="#64748b")
+    p.text(gst_x + 3, y + 34.5, COMPANY["place_of_supply"], size=9, bold=True,
+           color="#0f172a")
+    p.text(gst_x + 3, y + 38, "(Greater Noida Studio)", size=7, color="#64748b")
 
     # ── ITEMS TABLE ────────────────────────────────────────────────────
     y = 140.0
@@ -325,6 +337,13 @@ def generate_invoice_pdf(booking: dict, invoice_number: str) -> bytes:
 
     y += 16
 
+    # ── PLACE OF SUPPLY / TAX TREATMENT ────────────────────────
+    p.text(M, y + 4,
+           f"Place of Supply: {COMPANY['place_of_supply']} "
+           f"({COMPANY['supply_type']}) | CGST + SGST Applicable",
+           size=8, color="#64748b")
+    y += 6
+
     # ── THANK YOU + TOTALS ─────────────────────────────────────────────
     thank_x = M
     thank_w = 70.0
@@ -341,17 +360,17 @@ def generate_invoice_pdf(booking: dict, invoice_number: str) -> bytes:
         (f"SGST @ {gst_rate / 2:g}%", _inr(sgst)),
     ]
     for i, (label, val) in enumerate(tot_rows):
-        ty = y + 6 + i * 8
+        ty = y + 6 + i * 7
         p.text(tot_x + 3, ty, label, size=9, color="#475569")
         p.text(W - M - 3, ty, val, size=9, color="#0f172a", align="right")
 
-    total_y = y + 30
+    total_y = y + 26
     p.box(tot_x, total_y - 5, tot_w, 10, fill="#06b6d4")
     p.text(tot_x + 3, total_y + 1, "Total Amount (Rs.)", size=10, bold=True, color="#ffffff")
     p.text(W - M - 3, total_y + 1, _inr(total), size=10, bold=True, color="#ffffff", align="right")
 
     # ── AMOUNT IN WORDS ────────────────────────────────────────────────
-    y = y + 44
+    y = y + 38
     p.text(M, y, "Amount in Words:", size=8, bold=True, color="#2563eb")
     p.text(M, y + 5, number_to_words(total), size=8, color="#0f172a")
 

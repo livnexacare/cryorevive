@@ -1024,6 +1024,12 @@ export default function AdminDashboard() {
     }
   };
 
+  // Place of supply is fixed: the studio is the only place of business and
+  // every customer is served there, so all sales are intra-state UP (09).
+  const COMPANY_GSTIN = "09AAGCL7757C1Z9";
+  const PLACE_OF_SUPPLY = "09 - Uttar Pradesh";
+  const SUPPLY_TYPE = "Intra-State";
+
   // GSTR-1 CSV for the CA: every paid booking + membership sale in the
   // selected month (`expenseMonth`, YYYY-MM). Uses `revenueBookings` (limit
   // 200, unfiltered) rather than the status-filtered Bookings-tab list.
@@ -1042,8 +1048,9 @@ export default function AdminDashboard() {
 
     const rows = [
       ["Invoice No", "Date", "Client Name", "Phone", "Service",
-       "SAC Code", "Taxable Value", "CGST 9%", "SGST 9%",
-       "Total GST", "Invoice Total", "Payment Status", "Type"].join(","),
+       "SAC Code", "Place of Supply", "Supply Type",
+       "Taxable Value", "CGST 9%", "SGST 9%",
+       "Total GST", "Invoice Total", "Payment Status", "GST Type"].join(","),
     ];
 
     let invCounter = 1;
@@ -1060,8 +1067,9 @@ export default function AdminDashboard() {
         `"${b.name}"`, b.phone,
         `"${b.service_type.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}"`,
         "999312",
+        PLACE_OF_SUPPLY, SUPPLY_TYPE,
         taxable, cgst, sgst, gst, total,
-        b.payment_status, "B2C",
+        b.payment_status, "B2C - Regular",
       ].join(","));
     });
 
@@ -1078,8 +1086,9 @@ export default function AdminDashboard() {
         `"${m.client_name}"`, m.client_mobile,
         `"${m.package_name} Membership"`,
         "999312",
+        PLACE_OF_SUPPLY, SUPPLY_TYPE,
         taxable, cgst, sgst, gst, total,
-        "paid", "B2C",
+        "paid", "B2C - Regular",
       ].join(","));
     });
 
@@ -1089,11 +1098,35 @@ export default function AdminDashboard() {
     const totalGST = +(totalRevenue - totalTaxable).toFixed(2);
 
     rows.push("");
-    rows.push(["TOTAL", "", "", "", "", "",
+    // Blanks here track the header: 6 descriptive columns plus the two new
+    // Place of Supply / Supply Type columns before the money columns.
+    rows.push(["TOTAL", "", "", "", "", "", "", "",
       totalTaxable, +(totalGST / 2).toFixed(2),
       +(totalGST / 2).toFixed(2), totalGST, totalRevenue,
       "", "",
     ].join(","));
+
+    const monthLabel = new Date(expenseMonth + "-01")
+      .toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+
+    rows.push("");
+    rows.push("=== GSTR-1 SUMMARY ===");
+    rows.push(`Period,${monthLabel}`);
+    rows.push(`GSTIN,${COMPANY_GSTIN}`);
+    rows.push("Legal Name,Livnexa Care Pvt. Ltd.");
+    rows.push("Trade Name,CryoRevive");
+    rows.push(`Place of Business,${PLACE_OF_SUPPLY}`);
+    rows.push('Studio Address,"C-168 Omnicron 1 Mathurapur Greater Noida UP 201310"');
+    rows.push("SAC Code,999312");
+    rows.push("GST Rate,18%");
+    rows.push("Supply Type,Intra-State (CGST + SGST)");
+    rows.push(`Total Taxable Value,${totalTaxable}`);
+    rows.push(`Total CGST @ 9%,${(totalGST / 2).toFixed(2)}`);
+    rows.push(`Total SGST @ 9%,${(totalGST / 2).toFixed(2)}`);
+    rows.push(`Total GST,${totalGST.toFixed(2)}`);
+    rows.push(`Gross Revenue,${totalRevenue}`);
+    rows.push("All Transactions,B2C (Individual Consumers - No GSTIN)");
+    rows.push("Filing Type,GSTR-1 (Monthly)");
 
     const csv = rows.join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1154,27 +1187,46 @@ export default function AdminDashboard() {
     const monthName = new Date(expenseMonth + "-01")
       .toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
+    const bookingTotal = monthBookings
+      .reduce((s: number, b: any) => s + (b.amount || 0), 0)
+      .toLocaleString("en-IN");
+    const membershipTotal = monthMemberships
+      .reduce((s: number, m: any) => s + (m.price_paid || 0), 0)
+      .toLocaleString("en-IN");
+
     const summary = `
 CryoRevive — GST Summary for ${monthName}
-Livnexa Care Private Limited | PAN: AAGCL7757C
 ==========================================
+Legal Name: Livnexa Care Pvt. Ltd.
+Trade Name: CryoRevive
+PAN: AAGCL7757C
+GSTIN: ${COMPANY_GSTIN}
+
+PLACE OF BUSINESS
+State: Uttar Pradesh
+State Code: 09
+Address: C-168, Omnicron 1, Mathurapur, Greater Noida - 201310
+
+PLACE OF SUPPLY: ${PLACE_OF_SUPPLY}
+SUPPLY TYPE: Intra-State (CGST + SGST applicable)
 
 SALES SUMMARY (B2C)
-SAC Code: 999312 | GST Rate: 18%
-
-Session Bookings: ${monthBookings.length} | ₹${monthBookings.reduce((s: number, b: any) => s + (b.amount || 0), 0).toLocaleString("en-IN")}
-Memberships Sold: ${monthMemberships.length} | ₹${monthMemberships.reduce((s: number, m: any) => s + (m.price_paid || 0), 0).toLocaleString("en-IN")}
-
+SAC Code: 999312
+GST Rate: 18% (CGST 9% + SGST 9%)
 ------------------------------------------
-Total Gross Revenue:  ₹${totalRev.toLocaleString("en-IN")}
-Taxable Value:        ₹${taxable.toLocaleString("en-IN")}
-CGST @ 9%:            ₹${(gst / 2).toFixed(2)}
-SGST @ 9%:            ₹${(gst / 2).toFixed(2)}
-Total GST:            ₹${gst.toLocaleString("en-IN")}
+Session Bookings : ${monthBookings.length} | ₹${bookingTotal}
+Memberships Sold : ${monthMemberships.length} | ₹${membershipTotal}
 ------------------------------------------
-Place of Supply: Uttar Pradesh (09)
-All transactions: B2C (Individual clients)
-No B2B transactions this period
+Total Gross Revenue : ₹${totalRev.toLocaleString("en-IN")}
+(-) Taxable Value   : ₹${taxable.toLocaleString("en-IN")}
+CGST @ 9%          : ₹${(gst / 2).toFixed(2)}
+SGST @ 9%          : ₹${(gst / 2).toFixed(2)}
+Total GST           : ₹${gst.toLocaleString("en-IN")}
+------------------------------------------
+All sales are B2C (Individual consumers)
+No B2B / Export transactions this period
+No Credit/Debit Notes this period
+==========================================
     `.trim();
 
     const blob = new Blob([summary], { type: "text/plain" });
